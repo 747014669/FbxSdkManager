@@ -244,74 +244,74 @@ void FbxSdkLibrary::GetMeshPolygonPoints(FbxMesh* pMesh, vector<Polygon3D>& Poly
 
 void FbxSdkLibrary::GetMeshVertexColor(FbxMesh* pMesh, vector<vector<RGBA>>& PolygonColors)
 {
-	
-	int i, j, lPolygonCount = pMesh->GetPolygonCount();
-	int vertexId = 0;
-	//遍历Polygon
-	for (i = 0; i < lPolygonCount; i++)
-	{
-		int l;
-		const int lControlPointIndex = pMesh->GetPolygonVertex(i, j);
-		
-		if (lControlPointIndex < 0)
-			continue;
-		vector<RGBA> Colors;
-		for (l = 0; l < pMesh->GetElementVertexColorCount(); l++)
-		{
-			FbxColor fbx_color;
-			FbxGeometryElementVertexColor* leVtxc = pMesh->GetElementVertexColor( l);
-			switch (leVtxc->GetMappingMode())
-			{
-			default:
-				break;
-			case FbxGeometryElement::eByControlPoint:
-				switch (leVtxc->GetReferenceMode())
-				{
-				case FbxGeometryElement::eDirect:
-					fbx_color = leVtxc->GetDirectArray().GetAt(lControlPointIndex);
-					Colors.push_back({fbx_color.mRed,fbx_color.mGreen,fbx_color.mAlpha});
-					PolygonColors.push_back(Colors);
-					break;
-					
-				case FbxGeometryElement::eIndexToDirect:
-					fbx_color =    leVtxc->GetDirectArray().GetAt(leVtxc->GetIndexArray().GetAt(lControlPointIndex));
-					Colors.push_back({fbx_color.mRed,fbx_color.mGreen,fbx_color.mAlpha});
-					PolygonColors.push_back(Colors);
-					break;
-			default:
-				break; // other reference modes not shown here!
-				}
-			
-	
-			case FbxGeometryElement::eByPolygonVertex:
-				{
-					switch (leVtxc->GetReferenceMode())
-					{
-					case FbxGeometryElement::eDirect:
-						fbx_color = leVtxc->GetDirectArray().GetAt(vertexId);
-						Colors.push_back({fbx_color.mRed,fbx_color.mGreen,fbx_color.mAlpha});
-						PolygonColors.push_back(Colors);
-						break;
-					case FbxGeometryElement::eIndexToDirect:
-						{
-							int id = leVtxc->GetIndexArray().GetAt(vertexId);
-							fbx_color = leVtxc->GetDirectArray().GetAt(id);
-							Colors.push_back({fbx_color.mRed,fbx_color.mGreen,fbx_color.mAlpha});
-							PolygonColors.push_back(Colors);
-						}
-						break;
-					default:
-						break; // other reference modes not shown here!
-					}
-				}
-				break;
-	
-			case FbxGeometryElement::eByPolygon: // doesn't make much sense for UVs
-			case FbxGeometryElement::eAllSame:   // doesn't make much sense for UVs
-			case FbxGeometryElement::eNone:       // doesn't make much sense for UVs
-				break;
-			}
-		}
-		vertexId++;
-	}
+	//
+	// int i, j, lPolygonCount = pMesh->GetPolygonCount();
+	// int vertexId = 0;
+	// //遍历Polygon
+	// for (i = 0; i < lPolygonCount; i++)
+	// {
+	// 	int l;
+	// 	const int lControlPointIndex = pMesh->GetPolygonVertex(i, j);
+	// 	
+	// 	if (lControlPointIndex < 0)
+	// 		continue;
+	// 	vector<RGBA> Colors;
+	// 	for (l = 0; l < pMesh->GetElementVertexColorCount(); l++)
+	// 	{
+	// 		FbxColor fbx_color;
+	// 		FbxGeometryElementVertexColor* leVtxc = pMesh->GetElementVertexColor( l);
+	// 		switch (leVtxc->GetMappingMode())
+	// 		{
+	// 		default:
+	// 			break;
+	// 		case FbxGeometryElement::eByControlPoint:
+	// 			switch (leVtxc->GetReferenceMode())
+	// 			{
+	// 			case FbxGeometryElement::eDirect:
+	// 				fbx_color = leVtxc->GetDirectArray().GetAt(lControlPointIndex);
+	// 				Colors.push_back({fbx_color.mRed,fbx_color.mGreen,fbx_color.mAlpha});
+	// 				PolygonColors.push_back(Colors);
+	// 				break;
+	// 				
+	// 			case FbxGeometryElement::eIndexToDirect:
+	// 				fbx_color =    leVtxc->GetDirectArray().GetAt(leVtxc->GetIndexArray().GetAt(lControlPointIndex));
+	// 				Colors.push_back({fbx_color.mRed,fbx_color.mGreen,fbx_color.mAlpha});
+	// 				PolygonColors.push_back(Colors);
+	// 				break;
+	// 		default:
+	// 			break; // other reference modes not shown here!
+	// 			}
+	// 		
+	//
+	// 		case FbxGeometryElement::eByPolygonVertex:
+	// 			{
+	// 				switch (leVtxc->GetReferenceMode())
+	// 				{
+	// 				case FbxGeometryElement::eDirect:
+	// 					fbx_color = leVtxc->GetDirectArray().GetAt(vertexId);
+	// 					Colors.push_back({fbx_color.mRed,fbx_color.mGreen,fbx_color.mAlpha});
+	// 					PolygonColors.push_back(Colors);
+	// 					break;
+	// 				case FbxGeometryElement::eIndexToDirect:
+	// 					{
+	// 						int id = leVtxc->GetIndexArray().GetAt(vertexId);
+	// 						fbx_color = leVtxc->GetDirectArray().GetAt(id);
+	// 						Colors.push_back({fbx_color.mRed,fbx_color.mGreen,fbx_color.mAlpha});
+	// 						PolygonColors.push_back(Colors);
+	// 					}
+	// 					break;
+	// 				default:
+	// 					break; // other reference modes not shown here!
+	// 				}
+	// 			}
+	// 			break;
+	//
+	// 		case FbxGeometryElement::eByPolygon: // doesn't make much sense for UVs
+	// 		case FbxGeometryElement::eAllSame:   // doesn't make much sense for UVs
+	// 		case FbxGeometryElement::eNone:       // doesn't make much sense for UVs
+	// 			break;
+	// 		}
+	// 	}
+	// 	vertexId++;
+	// }
 }
