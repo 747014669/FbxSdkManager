@@ -194,7 +194,61 @@ void FbxSdkLibrary::GetMetaData(FbxScene* pScene, map<string, string>& MetaData)
 	}
 }
 
- void FbxSdkLibrary::GetMeshControlPoint(const FbxMesh* pMesh,vector<Point3D>& ControlPoints)
+void FbxSdkLibrary::GetFbxGeometries(FbxScene* const pScene)
+{
+	if(!pScene)
+	{
+		return;
+	}
+	//Geometry参数
+	vector<Point3D> ControlPoints;
+	FbxGeometryConverter converter = FbxGeometryConverter(pScene->GetFbxManager());
+	for(int i = 0;i<pScene->GetGeometryCount();++i)
+	{
+		FbxMesh* pMesh = (FbxMesh*)pScene->GetGeometry(i);
+		//先三角化
+		if(!pMesh->IsTriangleMesh())
+		{
+			pMesh = (FbxMesh*)converter.Triangulate(pScene->GetGeometry(i), true);
+		}
+		int j,k, PolygonCount = pMesh->GetPolygonCount();
+		//ControlPoints
+		GetMeshControlPoint(pMesh,ControlPoints);
+
+		//三角面信息
+		vector<int> Triangle(3 * PolygonCount);
+		vector<RGBA> Colors(3 * PolygonCount);
+		vector<Point2D> UVs(3 * PolygonCount);
+		vector<Point3D> Normals(3 * PolygonCount);
+		vector<Point3D> Tangents(3 * PolygonCount);
+		vector<Point3D> Binormals(3 * PolygonCount);
+		vector<int> MaterialIds;
+		//获得Polygon的信息
+		for (j = 0;j<PolygonCount;++j)
+		{
+			int MaterialId;
+			for(k =0;k<pMesh->GetPolygonSize(j);++k )
+			{
+				//获得三角面信息,小于0则意味着没找到对应的点
+				int ControlPointIndex = pMesh->GetPolygonVertex(j, k);
+				if(ControlPointIndex >=0)
+				{
+					int Index = pMesh->GetPolygonSize(j)*j+k;
+					Triangle[Index] = ControlPointIndex;
+					GetMeshVertexColor(pMesh,j,ControlPointIndex,Colors[Index]);
+					GetMeshUV(pMesh,j,ControlPointIndex,k,UVs[Index]);
+					GetMeshNormal(pMesh,j,Normals[Index]);
+					GetMeshTangent(pMesh,j,Tangents[Index]);
+					GetMeshBinormal(pMesh,j,Binormals[Index]);
+				}
+			}
+			GetPolygonMaterialId(pMesh,j,MaterialId);
+			MaterialIds.push_back(MaterialId);
+		}
+	}
+}
+
+void FbxSdkLibrary::GetMeshControlPoint(const FbxMesh* pMesh,vector<Point3D>& ControlPoints)
 {
 	
 	if(pMesh)
@@ -202,7 +256,6 @@ void FbxSdkLibrary::GetMetaData(FbxScene* pScene, map<string, string>& MetaData)
 		int i, lControlPointsCount = pMesh->GetControlPointsCount();
 		FbxVector4* lControlPoints = pMesh->GetControlPoints();
 		
-
 		for (i = 0; i < lControlPointsCount; i++)
 		{
 			Point3D Point = {lControlPoints[i][0],lControlPoints[i][1],lControlPoints[i][2]};
@@ -211,116 +264,243 @@ void FbxSdkLibrary::GetMetaData(FbxScene* pScene, map<string, string>& MetaData)
 	}
 }
 
-void FbxSdkLibrary::GetMeshPolygonPoints(FbxMesh* pMesh, vector<Polygon3D>& Polygons)
+void FbxSdkLibrary::GetMeshVertexColor(FbxMesh* pMesh,int PolygonIndex, int ControlPointIndex, RGBA& Color)
 {
-	int i, j, lPolygonCount = pMesh->GetPolygonCount();
-	FbxVector4* lControlPoints = pMesh->GetControlPoints(); 
-	
-	//遍历Polygon
-	for (i = 0; i < lPolygonCount; i++)
+	for (int l = 0; l < pMesh->GetElementVertexColorCount(); l++)
 	{
-		
-		int lPolygonSize = pMesh->GetPolygonSize(i);
-		
-		Polygon3D Polygon3D;
-		//遍历Polygon
-		for (j = 0; j < lPolygonSize; j++)
+		FbxColor FbxColor;
+		FbxGeometryElementVertexColor* Vtxc = pMesh->GetElementVertexColor( l);
+		//判断当前定点对应的模式
+		switch (Vtxc->GetMappingMode())
 		{
-			const int lControlPointIndex = pMesh->GetPolygonVertex(i, j);
-			if (lControlPointIndex < 0)
+				
+		case FbxGeometryElement::eByControlPoint:
 			{
-				  FBXSDK_printf("Coordinates: Invalid index found!");
-				continue;
+				switch (Vtxc->GetReferenceMode())
+				{
+				case FbxGeometryElement::eDirect:
+					{
+						FbxColor = Vtxc->GetDirectArray().GetAt(ControlPointIndex);
+						break;
+					}
+				case FbxGeometryElement::eIndexToDirect:
+					{
+						FbxColor = Vtxc->GetDirectArray().GetAt(Vtxc->GetIndexArray().GetAt(ControlPointIndex));
+						break;
+					}
+				default:
+					break; // other reference modes not shown here!
+				}
+				break;
 			}
-			else
+		case FbxGeometryElement::eByPolygonVertex:
 			{
-				Polygon3D.push_back({lControlPoints[j][0],lControlPoints[j][1],lControlPoints[j][2]});
-				FBXSDK_printf("Polygon:%d,X=%f,Y=%f,Z=%f \n",i,lControlPoints[j][0],lControlPoints[j][1],lControlPoints[j][2]);
+				switch (Vtxc->GetReferenceMode())
+				{
+				case FbxGeometryElement::eDirect:
+					{
+						FbxColor = Vtxc->GetDirectArray().GetAt(PolygonIndex);
+						break;
+					}
+				case FbxGeometryElement::eIndexToDirect:
+					{
+						const int id = Vtxc->GetIndexArray().GetAt(PolygonIndex);
+						FbxColor = Vtxc->GetDirectArray().GetAt(id);
+						break;
+					}
+				default: break;
+				}
 			}
+			break;
+	
+		case FbxGeometryElement::eByPolygon: // doesn't make much sense for UVs
+		case FbxGeometryElement::eAllSame:   // doesn't make much sense for UVs
+		case FbxGeometryElement::eNone:       // doesn't make much sense for UVs
+			break;
 		}
-		Polygons.push_back(Polygon3D);
+		Color = {FbxColor.mRed,FbxColor.mGreen,FbxColor.mAlpha};
 	}
 }
 
-void FbxSdkLibrary::GetMeshVertexColor(FbxMesh* pMesh, vector<vector<RGBA>>& PolygonColors)
+void FbxSdkLibrary::GetMeshUV(FbxMesh* pMesh,int PolygonIndex, int ControlPointIndex,int PositionInPolygon, Point2D& UV)
 {
-	int i, j, lPolygonCount = pMesh->GetPolygonCount();
-	int vertexId = 0;
-	//遍历Polygon
-	for (i = 0; i < lPolygonCount; i++)
+	for (int l = 0; l < pMesh->GetElementUVCount(); ++l)
 	{
-		vector<RGBA> Colors;
-		//遍历polyGon顶点
-		for (j = 0; j < pMesh->GetPolygonSize(i); j++)
-		{
-			const int lControlPointIndex = pMesh->GetPolygonVertex(i, j);
-			if (lControlPointIndex < 0)
-				continue;
-			
-			for (int l = 0; l < pMesh->GetElementVertexColorCount(); l++)
-			{
-				FbxColor fbx_color;
-				FbxGeometryElementVertexColor* leVtxc = pMesh->GetElementVertexColor( l);
-				//判断当前定点对应的模式
-				switch (leVtxc->GetMappingMode())
-				{
+		FbxGeometryElementUV* ElUV = pMesh->GetElementUV( l);
+		FBXSDK_printf("%s uv count is %d",pMesh->GetName(),ElUV);
 				
-				case FbxGeometryElement::eByControlPoint:
+		FbxVector2 FbxUV;
+		switch (ElUV->GetMappingMode())
+		{
+		default:
+			break;
+		case FbxGeometryElement::eByControlPoint:
+			switch (ElUV->GetReferenceMode())
+			{
+		case FbxGeometryElement::eDirect:
+				FbxUV = ElUV->GetDirectArray().GetAt(ControlPointIndex);
+				break;
+		case FbxGeometryElement::eIndexToDirect:
+			{
+				int id = ElUV->GetIndexArray().GetAt(ControlPointIndex);
+				FbxUV = ElUV->GetDirectArray().GetAt(id);
+
+			}
+				break;
+		default:
+			break; // other reference modes not shown here!
+			}
+			break;
+
+		case FbxGeometryElement::eByPolygonVertex:
+			{
+				int TextureUVIndex = pMesh->GetTextureUVIndex(PolygonIndex, PositionInPolygon);
+				switch (ElUV->GetReferenceMode())
+				{
+				case FbxGeometryElement::eDirect:
+				case FbxGeometryElement::eIndexToDirect:
 					{
-						switch (leVtxc->GetReferenceMode())
-						{
-						case FbxGeometryElement::eDirect:
-							{
-								fbx_color = leVtxc->GetDirectArray().GetAt(lControlPointIndex);
-								Colors.push_back({fbx_color.mRed,fbx_color.mGreen,fbx_color.mAlpha});
-								PolygonColors.push_back(Colors);
-								break;
-							}
-						case FbxGeometryElement::eIndexToDirect:
-							{
-								fbx_color =    leVtxc->GetDirectArray().GetAt(leVtxc->GetIndexArray().GetAt(lControlPointIndex));
-								Colors.push_back({fbx_color.mRed,fbx_color.mGreen,fbx_color.mAlpha});
-								PolygonColors.push_back(Colors);
-								break;
-							}
-						default:
-							break; // other reference modes not shown here!
-						}
-						break;
-					}
-				case FbxGeometryElement::eByPolygonVertex:
-					{
-						switch (leVtxc->GetReferenceMode())
-						{
-							case FbxGeometryElement::eDirect:
-								{
-									fbx_color = leVtxc->GetDirectArray().GetAt(vertexId);
-									Colors.push_back({fbx_color.mRed,fbx_color.mGreen,fbx_color.mAlpha});
-									PolygonColors.push_back(Colors);
-									break;
-								}
-							case FbxGeometryElement::eIndexToDirect:
-								{
-									const int id = leVtxc->GetIndexArray().GetAt(vertexId);
-									fbx_color = leVtxc->GetDirectArray().GetAt(id);
-									Colors.push_back({fbx_color.mRed,fbx_color.mGreen,fbx_color.mAlpha});
-									PolygonColors.push_back(Colors);
-									break;
-								}
-							default: break;
-						}
+						FbxUV = ElUV->GetDirectArray().GetAt(TextureUVIndex);
 					}
 					break;
-	
-				case FbxGeometryElement::eByPolygon: // doesn't make much sense for UVs
-				case FbxGeometryElement::eAllSame:   // doesn't make much sense for UVs
-				case FbxGeometryElement::eNone:       // doesn't make much sense for UVs
-					break;
+				default:
+					break; // other reference modes not shown here!
 				}
 			}
-			vertexId++;
-			
+			break;
+
+		case FbxGeometryElement::eByPolygon: // doesn't make much sense for UVs
+		case FbxGeometryElement::eAllSame:   // doesn't make much sense for UVs
+		case FbxGeometryElement::eNone:       // doesn't make much sense for UVs
+			break;
 		}
-		PolygonColors.push_back(Colors);
+		UV = {FbxUV[0],FbxUV[1]};
 	}
+}
+
+void FbxSdkLibrary::GetMeshNormal(FbxMesh* pMesh,int PolygonIndex, Point3D& Normal)
+{
+	for( int l = 0; l < pMesh->GetElementNormalCount(); ++l)
+	{
+		FbxGeometryElementNormal* ENolrmal = pMesh->GetElementNormal( l);
+		FbxVector4 FbxNormal;
+		if(ENolrmal->GetMappingMode() == FbxGeometryElement::eByPolygonVertex)
+		{
+			switch (ENolrmal->GetReferenceMode())
+			{
+			case FbxGeometryElement::eDirect:
+				FbxNormal = ENolrmal->GetDirectArray().GetAt(PolygonIndex);
+				break;
+			case FbxGeometryElement::eIndexToDirect:
+				{
+					int id = ENolrmal->GetIndexArray().GetAt(PolygonIndex);
+					FbxNormal = ENolrmal->GetDirectArray().GetAt(id);
+					
+				}
+				break;
+			default:
+				break; // other reference modes not shown here!
+			}
+			Normal = {FbxNormal[0],FbxNormal[1],FbxNormal[2]};	
+		}
+
+	}
+}
+
+void FbxSdkLibrary::GetMeshTangent(FbxMesh* pMesh, int PolygonIndex,Point3D& Tangent)
+{
+	for( int l = 0; l < pMesh->GetElementTangentCount(); ++l)
+	{
+		FbxGeometryElementTangent* ElTangent = pMesh->GetElementTangent( l);
+				
+		if(ElTangent->GetMappingMode() == FbxGeometryElement::eByPolygonVertex)
+		{
+			FbxVector4 FbxTangent;
+			switch (ElTangent->GetReferenceMode())
+			{
+			case FbxGeometryElement::eDirect:
+				FbxTangent = ElTangent->GetDirectArray().GetAt(PolygonIndex);
+				break;
+			case FbxGeometryElement::eIndexToDirect:
+				{
+					int id = ElTangent->GetIndexArray().GetAt(PolygonIndex);
+					FbxTangent = ElTangent->GetDirectArray().GetAt(id);
+				}
+				break;
+			default:
+				break; // other reference modes not shown here!
+			}
+			Tangent = {FbxTangent[0],FbxTangent[1],FbxTangent[2]};
+		}
+	}
+}
+
+void FbxSdkLibrary::GetMeshBinormal(FbxMesh* pMesh,int PolygonIndex, Point3D& Binormal)
+{
+	for(int l = 0; l < pMesh->GetElementBinormalCount(); ++l)
+	{
+		FbxGeometryElementBinormal* ElBinormal = pMesh->GetElementBinormal( l);
+				
+		if(ElBinormal->GetMappingMode() == FbxGeometryElement::eByPolygonVertex)
+		{
+			FbxVector4 FbxBinormal;
+			switch (ElBinormal->GetReferenceMode())
+			{
+			case FbxGeometryElement::eDirect:
+				{
+					FbxBinormal = ElBinormal->GetDirectArray().GetAt(PolygonIndex);
+				}
+				break;
+			case FbxGeometryElement::eIndexToDirect:
+				{
+					int id = ElBinormal->GetIndexArray().GetAt(PolygonIndex);
+					FbxBinormal = ElBinormal->GetDirectArray().GetAt(id);
+				}
+				break;
+			default:
+				break; // other reference modes not shown here!
+			}
+			Binormal = {FbxBinormal[0],FbxBinormal[1],FbxBinormal[2]};
+		}
+	}
+}
+
+void FbxSdkLibrary::GetPolygonMaterialId(FbxMesh* pMesh, int PolygonIndex, int& Id)
+{
+	int l;
+    //check whether the material maps with only one mesh
+    bool lIsAllSame = true;
+    for ( l= 0; l < pMesh->GetElementMaterialCount(); l++)
+    {
+
+        FbxGeometryElementMaterial* lMaterialElement = pMesh->GetElementMaterial(l);
+		if( lMaterialElement->GetMappingMode() == FbxGeometryElement::eByPolygon) 
+		{
+			lIsAllSame = false;
+			break;
+		}
+    }
+
+    //For eAllSame mapping type, just out the material and texture mapping info once
+    if(lIsAllSame)
+    {
+        for (l = 0; l < pMesh->GetElementMaterialCount(); l++)
+        {
+            FbxGeometryElementMaterial* MaterialElement = pMesh->GetElementMaterial( l);
+			if( MaterialElement->GetMappingMode() == FbxGeometryElement::eAllSame) 
+			{
+				Id = MaterialElement->GetIndexArray().GetAt(0);
+			}
+        }
+    }
+    //For eByPolygon mapping type, just out the material and texture mapping info once
+    else
+    {
+            for (l = 0; l < pMesh->GetElementMaterialCount(); l++)
+            {
+                FbxGeometryElementMaterial* MaterialElement = pMesh->GetElementMaterial( l);
+				Id = MaterialElement->GetIndexArray().GetAt(PolygonIndex);
+            }
+        }
+    
 }

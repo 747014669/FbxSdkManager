@@ -59,10 +59,14 @@ void PrintAttribute(FbxNodeAttribute* pAttribute) {
  * Print a node, its attributes, and all its children recursively.
  */
 void PrintNode(FbxNode* pNode) {
+    
+
     if(FbxMesh* lMesh = (FbxMesh*) pNode->GetNodeAttribute ())
     {
-        vector<Polygon3D> Polygons;
-        FbxSdkLibrary::GetMeshPolygonPoints(lMesh,Polygons);
+        
+        
+        FBXSDK_printf("%llu\n",lMesh->GetUniqueID());
+        
     }
     // PrintTabs();
     // const char* nodeName = pNode->GetName();
@@ -99,7 +103,7 @@ void PrintNode(FbxNode* pNode) {
 int main(int argc, char** argv) {
 
     // Change the following filename to a suitable filename value.
-    const char* lFilename = R"(C:\Users\Administrator\Desktop\Test.fbx)";
+    const char* lFilename = R"(C:\Program Files\Autodesk\FBX\FBX SDK\2020.3.4\bin\vs2022-md\Debug\Instances.fbx)";
 
     // Initialize the SDK manager. This object handles all our memory management.
     FbxManager* lSdkManager = FbxManager::Create();
@@ -120,20 +124,30 @@ int main(int argc, char** argv) {
 
     // Create a new scene so that it can be populated by the imported file.
     FbxScene* lScene = FbxScene::Create(lSdkManager, "myScene");
-
+    
     // Import the contents of the file into the scene.
     lImporter->Import(lScene);
     // The file is imported; so get rid of the importer.
     lImporter->Destroy();
+    for(int i= 0;i<lScene->GetGeometryCount();i++)
+    {
+        auto Name = lScene->GetGeometry(i)->GetName();
+        auto Id = lScene->GetGeometry(i)->GetUniqueID();
 
+        FBXSDK_printf("name:%s,Id%llu\n",Name,Id);
+        
+    }
+  
+    FbxSdkLibrary::GetFbxGeometries(lScene);
+    
     // Print the nodes of the scene and their attributes recursively.
     // Note that we are not printing the root node because it should
     // not contain any attributes.
-    FbxNode* lRootNode = lScene->GetRootNode();
-    if (lRootNode) {
-        for (int i = 0; i < lRootNode->GetChildCount(); i++)
-            PrintNode(lRootNode->GetChild(i));
-    }
+    // FbxNode* lRootNode = lScene->GetRootNode();
+    // if (lRootNode) {
+    //     for (int i = 0; i < lRootNode->GetChildCount(); i++)
+    //         PrintNode(lRootNode->GetChild(i));
+    // }
     // Destroy the SDK manager and all the other objects it was handling.
     lSdkManager->Destroy();
     system("Pause");
