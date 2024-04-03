@@ -61,39 +61,10 @@ void PrintAttribute(FbxNodeAttribute* pAttribute) {
 void PrintNode(FbxNode* pNode) {
     
 
-    if(FbxMesh* lMesh = (FbxMesh*) pNode->GetNodeAttribute ())
-    {
-        
-        
-        FBXSDK_printf("%llu\n",lMesh->GetUniqueID());
-        
-    }
-    // PrintTabs();
-    // const char* nodeName = pNode->GetName();
-    // FbxDouble3 translation = pNode->LclTranslation.Get();
-    // FbxDouble3 rotation = pNode->LclRotation.Get();
-    // FbxDouble3 scaling = pNode->LclScaling.Get();
-    //
-    // // Print the contents of the node.
-    // printf("<node name='%s' translation='(%f, %f, %f)' rotation='(%f, %f, %f)' scaling='(%f, %f, %f)'>\n",
-    //     nodeName,
-    //     translation[0], translation[1], translation[2],
-    //     rotation[0], rotation[1], rotation[2],
-    //     scaling[0], scaling[1], scaling[2]
-    // );
-    // numTabs++;
-    //
-    // // Print the node's attributes.
-    // for (int i = 0; i < pNode->GetNodeAttributeCount(); i++)
-    //     PrintAttribute(pNode->GetNodeAttributeByIndex(i));
-    //
-    // // Recursively print the children.
-    // for (int j = 0; j < pNode->GetChildCount(); j++)
-    //     PrintNode(pNode->GetChild(j));
-    //
-    // numTabs--;
-    // PrintTabs();
-    // printf("</node>\n");
+    // if(FbxMesh* lMesh = (FbxMesh*) pNode->GetNodeAttribute ())
+    // {
+    //     FBXSDK_printf("%llu\n",lMesh->GetUniqueID());
+    // }
 }
 
 /**
@@ -103,7 +74,7 @@ void PrintNode(FbxNode* pNode) {
 int main(int argc, char** argv) {
 
     // Change the following filename to a suitable filename value.
-    const char* lFilename = R"(C:\Program Files\Autodesk\FBX\FBX SDK\2020.3.4\bin\vs2022-md\Debug\Instances.fbx)";
+    const char* lFilename = R"(C:\Users\Administrator\Desktop\Instance.fbx)";
 
     // Initialize the SDK manager. This object handles all our memory management.
     FbxManager* lSdkManager = FbxManager::Create();
@@ -138,8 +109,28 @@ int main(int argc, char** argv) {
         
     }
   
-    FbxSdkLibrary::GetFbxGeometries(lScene);
-    
+    map<uint64_t,map<uint64_t,FbxSection>> Geometries = FbxSdkLibrary::GetFbxGeometries(lScene);
+    for(auto it = Geometries.begin();it!=Geometries.end();it++)
+    {
+        FBXSDK_printf("Geometry Id:%llu:======= \n",it->first);
+        for(auto it2 = it->second.begin();it2!=it->second.end();it2++)
+        {
+            FBXSDK_printf("Mateiral Id:%llu,FbxSecion:======= \n",it2->first);
+            for(int i =0;i < it2->second.Triangle.size();i++)
+            {
+                FBXSDK_printf("Triangle:%d\t,Normal:(%f,%f,%f)\t \n",
+                    it2->second.Triangle[i],it2->second.Normals[i][0],it2->second.Normals[i][1],it2->second.Normals[i][2]);
+            }
+        }
+        
+    }
+        
+    map<uint64_t,FbxMaterialsInfo> MaterialInfos;
+    FbxSdkLibrary::GetFbxMaterials(lScene,MaterialInfos);
+    for(auto it = MaterialInfos.begin();it!=MaterialInfos.end();it++)
+    {
+        FBXSDK_printf("Id:%llu,material:%s\n",it->first,it->second.Diffuse.Texture);
+    }
     // Print the nodes of the scene and their attributes recursively.
     // Note that we are not printing the root node because it should
     // not contain any attributes.

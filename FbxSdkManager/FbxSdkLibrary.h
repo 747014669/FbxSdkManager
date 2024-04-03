@@ -13,13 +13,41 @@
 #endif // DLLTEST_EXPORTS
 using namespace std;
 
-typedef array<double,2> Point2D;
-typedef array<double,3> Point3D;
-typedef array<double,4> RGBA;
 
 
-typedef vector<Point3D> Polygon3D;
+struct FbxMaterialColorProperty
+{
+ FbxDouble3 Color;
+ const char* Texture;
+};
 
+struct FbxMaterialFactorProperty
+{
+ double Factory;
+ const char* Texture;
+};
+
+struct FbxMaterialsInfo
+{
+ FbxMaterialColorProperty Ambient;
+ FbxMaterialColorProperty Diffuse;
+ FbxMaterialColorProperty Specular;
+ FbxMaterialColorProperty Emissive;
+ FbxMaterialFactorProperty Opacity;
+ FbxMaterialFactorProperty Shininess;
+ FbxMaterialFactorProperty Reflectivity;
+};
+
+struct FbxSection
+{
+   vector<int> Triangle;
+   vector<FbxColor> Colors;
+   vector<FbxVector2> UVs;
+   vector<FbxVector4> Normals;
+   vector<FbxVector4> Tangents;
+   vector<FbxVector4> Binormals;
+   uint64_t MaterialIds;
+};
 
 class DLL_API FbxSdkLibrary
 {
@@ -43,38 +71,44 @@ public:
     /**
     * @brief 获得Scene里面的所有Geometry
     */
-    static void GetFbxGeometries(FbxScene* const pScene);
+    static map<uint64_t, map<uint64_t, FbxSection>> GetFbxGeometries(FbxScene* const pScene);
     
     /**
     * @brief 获得Mesh的控制点
     */
-    static void GetMeshControlPoint(const FbxMesh* pMesh, vector<Point3D>& ControlPoints);
+    static void GetMeshControlPoint(const FbxMesh* pMesh, vector<FbxVector4>& ControlPoints);
     /**
     * @brief 获得Mesh的顶点颜色信息
     */
-    static void GetMeshVertexColor(FbxMesh* pMesh,int PolygonIndex,int ControlPointIndex,RGBA& Color);
+    static void GetPolygonVertexColor(FbxMesh* pMesh,int PolygonIndex,int ControlPointIndex,FbxColor& Color);
     /**
     * @brief 获得Mesh的顶点的UV信息
     */
-    static void GetMeshUV(FbxMesh* pMesh, int PolygonIndex, int ControlPointIndex, int PositionInPolygon, Point2D& UV);
+    static void GetPolygonUV(FbxMesh* pMesh, int PolygonIndex, int ControlPointIndex, int PositionInPolygon, FbxVector2& UV);
     /**
     * @brief 获得Mesh的法线信息
     */
-    static void GetMeshNormal(FbxMesh* pMesh, int PolygonIndex, Point3D& Normal);
+    static void GetPolygonNormal(FbxMesh* pMesh, int PolygonIndex, FbxVector4& Normal);
     /**
     * @brief 获得Mesh的顶点切线信息
     */
-    static void GetMeshTangent(FbxMesh* pMesh, int PolygonIndex, Point3D& Tangent);
+    static void GetPolygonTangent(FbxMesh* pMesh, int PolygonIndex, FbxVector4& Tangent);
     /**
     * @brief 获得Mesh的顶点Binormal信息
     */
-    static void GetMeshBinormal(FbxMesh* pMesh, int PolygonIndex, Point3D& Binormal);
+    static void GetPolygonBinormal(FbxMesh* pMesh, int PolygonIndex, FbxVector4& Binormal);
 
     /**
-    * @brief 获得Mesh的顶点Binormal信息
+    * @brief 获得Polygon对应的材质ID
     */
-    static void GetPolygonMaterialId(FbxMesh* pMesh, int PolygonIndex, int& Id);
+    static void GetPolygonMaterialId(FbxMesh* pMesh, int PolygonIndex, uint64_t& Id);
+    /**
+     *@brief 获得场景材质信息
+     */
+    static void GetFbxMaterials(FbxScene* pScene,map<uint64_t,FbxMaterialsInfo>& MaterialInfos);
 
+    static const char* GetMaterialTexture(FbxSurfaceMaterial* pMaterial,const char* Property);
+ 
     static int Test(){return 100;}
     
 };

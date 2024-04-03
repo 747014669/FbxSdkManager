@@ -72,38 +72,6 @@ bool FbxSdkLibrary::LoadScene(FbxManager* pManager, FbxDocument* pScene, const c
 
     if (lImporter->IsFBX())
     {
-	    int lAnimStackCount;
-	    FBXSDK_printf("FBX file format version for file '%s' is %d.%d.%d\n\n", pFilename, lFileMajor, lFileMinor, lFileRevision);
-
-        // From this point, it is possible to access animation stack information without
-        // the expense of loading the entire file.
-
-        FBXSDK_printf("Animation Stack Information\n");
-
-        lAnimStackCount = lImporter->GetAnimStackCount();
-
-        FBXSDK_printf("    Number of Animation Stacks: %d\n", lAnimStackCount);
-        FBXSDK_printf("    Current Animation Stack: \"%s\"\n", lImporter->GetActiveAnimStackName().Buffer());
-        FBXSDK_printf("\n");
-
-        for(int i = 0; i < lAnimStackCount; i++)
-        {
-            FbxTakeInfo* lTakeInfo = lImporter->GetTakeInfo(i);
-
-            FBXSDK_printf("    Animation Stack %d\n", i);
-            FBXSDK_printf("         Name: \"%s\"\n", lTakeInfo->mName.Buffer());
-            FBXSDK_printf("         Description: \"%s\"\n", lTakeInfo->mDescription.Buffer());
-
-            // Change the value of the import name if the animation stack should be imported 
-            // under a different name.
-            FBXSDK_printf("         Import Name: \"%s\"\n", lTakeInfo->mImportName.Buffer());
-
-            // Set the value of the import state to false if the animation stack should be not
-            // be imported. 
-            FBXSDK_printf("         Import State: %s\n", lTakeInfo->mSelect ? "true" : "false");
-            FBXSDK_printf("\n");
-        }
-
         // Set the import states. By default, the import states are always set to 
         // true. The code below shows how to change these states.
         IOS_REF.SetBoolProp(IMP_FBX_MATERIAL,        true);
@@ -194,14 +162,16 @@ void FbxSdkLibrary::GetMetaData(FbxScene* pScene, map<string, string>& MetaData)
 	}
 }
 
-void FbxSdkLibrary::GetFbxGeometries(FbxScene* const pScene)
+map<uint64_t, map<uint64_t, FbxSection>> FbxSdkLibrary::GetFbxGeometries(FbxScene* const pScene)
 {
+	map<uint64_t,map<uint64_t, FbxSection>> Geomteries;
+	
 	if(!pScene)
 	{
-		return;
+		return Geomteries;
 	}
 	//Geometry参数
-	vector<Point3D> ControlPoints;
+	vector<FbxVector4> ControlPoints;
 	FbxGeometryConverter converter = FbxGeometryConverter(pScene->GetFbxManager());
 	for(int i = 0;i<pScene->GetGeometryCount();++i)
 	{
@@ -214,19 +184,19 @@ void FbxSdkLibrary::GetFbxGeometries(FbxScene* const pScene)
 		int j,k, PolygonCount = pMesh->GetPolygonCount();
 		//ControlPoints
 		GetMeshControlPoint(pMesh,ControlPoints);
-
+		
 		//三角面信息
 		vector<int> Triangle(3 * PolygonCount);
-		vector<RGBA> Colors(3 * PolygonCount);
-		vector<Point2D> UVs(3 * PolygonCount);
-		vector<Point3D> Normals(3 * PolygonCount);
-		vector<Point3D> Tangents(3 * PolygonCount);
-		vector<Point3D> Binormals(3 * PolygonCount);
-		vector<int> MaterialIds;
+		vector<FbxColor> Colors(3 * PolygonCount);
+		vector<FbxVector2> UVs(3 * PolygonCount);
+		vector<FbxVector4> Normals(3 * PolygonCount);
+		vector<FbxVector4> Tangents(3 * PolygonCount);
+		vector<FbxVector4> Binormals(3 * PolygonCount);
+		vector<uint64_t> MaterialIds;
 		//获得Polygon的信息
 		for (j = 0;j<PolygonCount;++j)
 		{
-			int MaterialId;
+			
 			for(k =0;k<pMesh->GetPolygonSize(j);++k )
 			{
 				//获得三角面信息,小于0则意味着没找到对应的点
@@ -235,22 +205,48 @@ void FbxSdkLibrary::GetFbxGeometries(FbxScene* const pScene)
 				{
 					int Index = pMesh->GetPolygonSize(j)*j+k;
 					Triangle[Index] = ControlPointIndex;
-					GetMeshVertexColor(pMesh,j,ControlPointIndex,Colors[Index]);
-					GetMeshUV(pMesh,j,ControlPointIndex,k,UVs[Index]);
-					GetMeshNormal(pMesh,j,Normals[Index]);
-					GetMeshTangent(pMesh,j,Tangents[Index]);
-					GetMeshBinormal(pMesh,j,Binormals[Index]);
+					GetPolygonVertexColor(pMesh,j,ControlPointIndex,Colors[Index]);
+					GetPolygonUV(pMesh,j,ControlPointIndex,k,UVs[Index]);
 				}
 			}
+			uint64_t MaterialId;
+			GetPolygonNormal(pMesh,j,Normals[j * pMesh->GetPolygonSize(j)]);
+			GetPolygonTangent(pMesh,j,Tangents[j * pMesh->GetPolygonSize(j)]);
+			GetPolygonBinormal(pMesh,j,Binormals[j * pMesh->GetPolygonSize(j)]);
 			GetPolygonMaterialId(pMesh,j,MaterialId);
 			MaterialIds.push_back(MaterialId);
 		}
+		//根据材质分组
+		map<uint64_t,FbxSection> Sections;
+		for(int MatId = 0 ; MatId < (int)MaterialIds.size(); ++MatId)
+		{
+			
+			if(Sections.count(MaterialIds[MatId]) == 0)
+			{
+				FbxSection section;
+				Sections.insert(pair<uint64_t,FbxSection>(MaterialIds[MatId],section));
+			}
+
+			FbxSection* Geom = &Sections[MaterialIds[MatId]];
+			for(int l=0;l<3;++l)
+			{
+				Geom->Triangle.push_back(Triangle[3*MatId+l]);
+				Geom->Colors.push_back(Colors[3*MatId+l]);
+				Geom->UVs.push_back(UVs[3*MatId+l]);
+				Geom->Normals.push_back(Normals[3*MatId+l]);
+				Geom->Tangents.push_back(Tangents[3*MatId+l]);
+				Geom->Binormals.push_back(Binormals[3*MatId+l]);
+				Geom->MaterialIds = MaterialIds[MatId];
+			}
+		}
+
+		Geomteries.insert(pair<uint64_t,map<uint64_t, FbxSection>>(pMesh->GetUniqueID(),Sections));
 	}
+	return Geomteries;
 }
 
-void FbxSdkLibrary::GetMeshControlPoint(const FbxMesh* pMesh,vector<Point3D>& ControlPoints)
+void FbxSdkLibrary::GetMeshControlPoint(const FbxMesh* pMesh,vector<FbxVector4>& ControlPoints)
 {
-	
 	if(pMesh)
 	{
 		int i, lControlPointsCount = pMesh->GetControlPointsCount();
@@ -258,17 +254,16 @@ void FbxSdkLibrary::GetMeshControlPoint(const FbxMesh* pMesh,vector<Point3D>& Co
 		
 		for (i = 0; i < lControlPointsCount; i++)
 		{
-			Point3D Point = {lControlPoints[i][0],lControlPoints[i][1],lControlPoints[i][2]};
-			ControlPoints.push_back(Point);
+			ControlPoints.push_back(lControlPoints[i]);
 		}
 	}
 }
 
-void FbxSdkLibrary::GetMeshVertexColor(FbxMesh* pMesh,int PolygonIndex, int ControlPointIndex, RGBA& Color)
+void FbxSdkLibrary::GetPolygonVertexColor(FbxMesh* pMesh, int PolygonIndex, int ControlPointIndex, FbxColor& Color)
 {
 	for (int l = 0; l < pMesh->GetElementVertexColorCount(); l++)
 	{
-		FbxColor FbxColor;
+		
 		FbxGeometryElementVertexColor* Vtxc = pMesh->GetElementVertexColor( l);
 		//判断当前定点对应的模式
 		switch (Vtxc->GetMappingMode())
@@ -280,12 +275,12 @@ void FbxSdkLibrary::GetMeshVertexColor(FbxMesh* pMesh,int PolygonIndex, int Cont
 				{
 				case FbxGeometryElement::eDirect:
 					{
-						FbxColor = Vtxc->GetDirectArray().GetAt(ControlPointIndex);
+						Color = Vtxc->GetDirectArray().GetAt(ControlPointIndex);
 						break;
 					}
 				case FbxGeometryElement::eIndexToDirect:
 					{
-						FbxColor = Vtxc->GetDirectArray().GetAt(Vtxc->GetIndexArray().GetAt(ControlPointIndex));
+						Color = Vtxc->GetDirectArray().GetAt(Vtxc->GetIndexArray().GetAt(ControlPointIndex));
 						break;
 					}
 				default:
@@ -299,13 +294,13 @@ void FbxSdkLibrary::GetMeshVertexColor(FbxMesh* pMesh,int PolygonIndex, int Cont
 				{
 				case FbxGeometryElement::eDirect:
 					{
-						FbxColor = Vtxc->GetDirectArray().GetAt(PolygonIndex);
+						Color = Vtxc->GetDirectArray().GetAt(PolygonIndex);
 						break;
 					}
 				case FbxGeometryElement::eIndexToDirect:
 					{
 						const int id = Vtxc->GetIndexArray().GetAt(PolygonIndex);
-						FbxColor = Vtxc->GetDirectArray().GetAt(id);
+						Color = Vtxc->GetDirectArray().GetAt(id);
 						break;
 					}
 				default: break;
@@ -318,18 +313,16 @@ void FbxSdkLibrary::GetMeshVertexColor(FbxMesh* pMesh,int PolygonIndex, int Cont
 		case FbxGeometryElement::eNone:       // doesn't make much sense for UVs
 			break;
 		}
-		Color = {FbxColor.mRed,FbxColor.mGreen,FbxColor.mAlpha};
+		
 	}
 }
 
-void FbxSdkLibrary::GetMeshUV(FbxMesh* pMesh,int PolygonIndex, int ControlPointIndex,int PositionInPolygon, Point2D& UV)
+void FbxSdkLibrary::GetPolygonUV(FbxMesh* pMesh, int PolygonIndex, int ControlPointIndex, int PositionInPolygon,FbxVector2& UV)
 {
 	for (int l = 0; l < pMesh->GetElementUVCount(); ++l)
 	{
 		FbxGeometryElementUV* ElUV = pMesh->GetElementUV( l);
-		FBXSDK_printf("%s uv count is %d",pMesh->GetName(),ElUV);
-				
-		FbxVector2 FbxUV;
+		
 		switch (ElUV->GetMappingMode())
 		{
 		default:
@@ -338,12 +331,12 @@ void FbxSdkLibrary::GetMeshUV(FbxMesh* pMesh,int PolygonIndex, int ControlPointI
 			switch (ElUV->GetReferenceMode())
 			{
 		case FbxGeometryElement::eDirect:
-				FbxUV = ElUV->GetDirectArray().GetAt(ControlPointIndex);
+				UV = ElUV->GetDirectArray().GetAt(ControlPointIndex);
 				break;
 		case FbxGeometryElement::eIndexToDirect:
 			{
 				int id = ElUV->GetIndexArray().GetAt(ControlPointIndex);
-				FbxUV = ElUV->GetDirectArray().GetAt(id);
+				UV = ElUV->GetDirectArray().GetAt(id);
 
 			}
 				break;
@@ -360,7 +353,7 @@ void FbxSdkLibrary::GetMeshUV(FbxMesh* pMesh,int PolygonIndex, int ControlPointI
 				case FbxGeometryElement::eDirect:
 				case FbxGeometryElement::eIndexToDirect:
 					{
-						FbxUV = ElUV->GetDirectArray().GetAt(TextureUVIndex);
+						UV = ElUV->GetDirectArray().GetAt(TextureUVIndex);
 					}
 					break;
 				default:
@@ -374,40 +367,39 @@ void FbxSdkLibrary::GetMeshUV(FbxMesh* pMesh,int PolygonIndex, int ControlPointI
 		case FbxGeometryElement::eNone:       // doesn't make much sense for UVs
 			break;
 		}
-		UV = {FbxUV[0],FbxUV[1]};
 	}
 }
 
-void FbxSdkLibrary::GetMeshNormal(FbxMesh* pMesh,int PolygonIndex, Point3D& Normal)
+void FbxSdkLibrary::GetPolygonNormal(FbxMesh* pMesh, int PolygonIndex, FbxVector4& Normal)
 {
 	for( int l = 0; l < pMesh->GetElementNormalCount(); ++l)
 	{
 		FbxGeometryElementNormal* ENolrmal = pMesh->GetElementNormal( l);
-		FbxVector4 FbxNormal;
+		
 		if(ENolrmal->GetMappingMode() == FbxGeometryElement::eByPolygonVertex)
 		{
 			switch (ENolrmal->GetReferenceMode())
 			{
 			case FbxGeometryElement::eDirect:
-				FbxNormal = ENolrmal->GetDirectArray().GetAt(PolygonIndex);
+				Normal = ENolrmal->GetDirectArray().GetAt(PolygonIndex);
 				break;
 			case FbxGeometryElement::eIndexToDirect:
 				{
 					int id = ENolrmal->GetIndexArray().GetAt(PolygonIndex);
-					FbxNormal = ENolrmal->GetDirectArray().GetAt(id);
+					Normal = ENolrmal->GetDirectArray().GetAt(id);
 					
 				}
 				break;
 			default:
 				break; // other reference modes not shown here!
 			}
-			Normal = {FbxNormal[0],FbxNormal[1],FbxNormal[2]};	
+			*(&Normal + 1) = Normal;
+			*(&Normal + 2) = Normal;
 		}
-
 	}
 }
 
-void FbxSdkLibrary::GetMeshTangent(FbxMesh* pMesh, int PolygonIndex,Point3D& Tangent)
+void FbxSdkLibrary::GetPolygonTangent(FbxMesh* pMesh, int PolygonIndex, FbxVector4& Tangent)
 {
 	for( int l = 0; l < pMesh->GetElementTangentCount(); ++l)
 	{
@@ -415,27 +407,27 @@ void FbxSdkLibrary::GetMeshTangent(FbxMesh* pMesh, int PolygonIndex,Point3D& Tan
 				
 		if(ElTangent->GetMappingMode() == FbxGeometryElement::eByPolygonVertex)
 		{
-			FbxVector4 FbxTangent;
 			switch (ElTangent->GetReferenceMode())
 			{
 			case FbxGeometryElement::eDirect:
-				FbxTangent = ElTangent->GetDirectArray().GetAt(PolygonIndex);
+				Tangent = ElTangent->GetDirectArray().GetAt(PolygonIndex);
 				break;
 			case FbxGeometryElement::eIndexToDirect:
 				{
 					int id = ElTangent->GetIndexArray().GetAt(PolygonIndex);
-					FbxTangent = ElTangent->GetDirectArray().GetAt(id);
+					Tangent = ElTangent->GetDirectArray().GetAt(id);
 				}
 				break;
 			default:
 				break; // other reference modes not shown here!
 			}
-			Tangent = {FbxTangent[0],FbxTangent[1],FbxTangent[2]};
+			*(&Tangent + 1) = Tangent;
+			*(&Tangent + 2) = Tangent;
 		}
 	}
 }
 
-void FbxSdkLibrary::GetMeshBinormal(FbxMesh* pMesh,int PolygonIndex, Point3D& Binormal)
+void FbxSdkLibrary::GetPolygonBinormal(FbxMesh* pMesh, int PolygonIndex, FbxVector4& Binormal)
 {
 	for(int l = 0; l < pMesh->GetElementBinormalCount(); ++l)
 	{
@@ -443,64 +435,331 @@ void FbxSdkLibrary::GetMeshBinormal(FbxMesh* pMesh,int PolygonIndex, Point3D& Bi
 				
 		if(ElBinormal->GetMappingMode() == FbxGeometryElement::eByPolygonVertex)
 		{
-			FbxVector4 FbxBinormal;
 			switch (ElBinormal->GetReferenceMode())
 			{
 			case FbxGeometryElement::eDirect:
 				{
-					FbxBinormal = ElBinormal->GetDirectArray().GetAt(PolygonIndex);
+					Binormal = ElBinormal->GetDirectArray().GetAt(PolygonIndex);
 				}
 				break;
 			case FbxGeometryElement::eIndexToDirect:
 				{
 					int id = ElBinormal->GetIndexArray().GetAt(PolygonIndex);
-					FbxBinormal = ElBinormal->GetDirectArray().GetAt(id);
+					Binormal = ElBinormal->GetDirectArray().GetAt(id);
 				}
 				break;
 			default:
 				break; // other reference modes not shown here!
 			}
-			Binormal = {FbxBinormal[0],FbxBinormal[1],FbxBinormal[2]};
+			*(&Binormal + 1) = Binormal;
+			*(&Binormal + 2) = Binormal;
 		}
 	}
 }
 
-void FbxSdkLibrary::GetPolygonMaterialId(FbxMesh* pMesh, int PolygonIndex, int& Id)
+void FbxSdkLibrary::GetPolygonMaterialId(FbxMesh* pMesh, int PolygonIndex, uint64_t& Id)
 {
 	int l;
-    //check whether the material maps with only one mesh
-    bool lIsAllSame = true;
-    for ( l= 0; l < pMesh->GetElementMaterialCount(); l++)
-    {
+	//check whether the material maps with only one mesh
+	bool lIsAllSame = true;
+	for ( l= 0; l < pMesh->GetElementMaterialCount(); l++)
+	{
 
-        FbxGeometryElementMaterial* lMaterialElement = pMesh->GetElementMaterial(l);
+		FbxGeometryElementMaterial* lMaterialElement = pMesh->GetElementMaterial(l);
 		if( lMaterialElement->GetMappingMode() == FbxGeometryElement::eByPolygon) 
 		{
 			lIsAllSame = false;
 			break;
 		}
-    }
-
-    //For eAllSame mapping type, just out the material and texture mapping info once
-    if(lIsAllSame)
-    {
-        for (l = 0; l < pMesh->GetElementMaterialCount(); l++)
-        {
-            FbxGeometryElementMaterial* MaterialElement = pMesh->GetElementMaterial( l);
+	}
+	
+	//For eAllSame mapping type, just out the material and texture mapping info once
+	if(lIsAllSame)
+	{
+		for (l = 0; l < pMesh->GetElementMaterialCount(); l++)
+		{
+			FbxGeometryElementMaterial* MaterialElement = pMesh->GetElementMaterial( l);
 			if( MaterialElement->GetMappingMode() == FbxGeometryElement::eAllSame) 
 			{
-				Id = MaterialElement->GetIndexArray().GetAt(0);
+				FbxSurfaceMaterial* Material = pMesh->GetNode()->GetMaterial(MaterialElement->GetIndexArray().GetAt(0));
+				Id = Material->GetUniqueID();
+				break;
 			}
-        }
-    }
-    //For eByPolygon mapping type, just out the material and texture mapping info once
-    else
-    {
-            for (l = 0; l < pMesh->GetElementMaterialCount(); l++)
-            {
-                FbxGeometryElementMaterial* MaterialElement = pMesh->GetElementMaterial( l);
-				Id = MaterialElement->GetIndexArray().GetAt(PolygonIndex);
-            }
-        }
-    
+		}
+		//没有材质
+		// if(l == 0)
+		// {
+		// 	Id = 0;
+		// }
+	}
+	//For eByPolygon mapping type, just out the material and texture mapping info once
+	else
+	{
+		for (l = 0; l < pMesh->GetElementMaterialCount(); l++)
+		{
+			int Index = -1;
+			FbxGeometryElementMaterial* MaterialElement = pMesh->GetElementMaterial( l);
+			Index = MaterialElement->GetIndexArray().GetAt(PolygonIndex);
+			if(Index >= 0)
+			{
+				FbxSurfaceMaterial* Material = pMesh->GetNode()->GetMaterial(Index);
+				Id =  Material->GetUniqueID();
+				break;
+			}
+			
+		}
+	}
+
+}
+
+static const FbxImplementation* LookForImplementation(FbxSurfaceMaterial* pMaterial)
+{
+	const FbxImplementation* lImplementation = nullptr;
+	if (!lImplementation) lImplementation = GetImplementation(pMaterial, FBXSDK_IMPLEMENTATION_CGFX);
+	if (!lImplementation) lImplementation = GetImplementation(pMaterial, FBXSDK_IMPLEMENTATION_HLSL);
+	if (!lImplementation) lImplementation = GetImplementation(pMaterial, FBXSDK_IMPLEMENTATION_SFX);
+	if (!lImplementation) lImplementation = GetImplementation(pMaterial, FBXSDK_IMPLEMENTATION_OGS);
+	if (!lImplementation) lImplementation = GetImplementation(pMaterial, FBXSDK_IMPLEMENTATION_SSSL);
+	return lImplementation;    
+}
+
+void FbxSdkLibrary::GetFbxMaterials(FbxScene* pScene, map<uint64_t, FbxMaterialsInfo>& MaterialInfos)
+{
+	const int MaterialCount = pScene->GetMaterialCount();
+	
+
+	FbxPropertyT<FbxDouble> MFbxDouble1;
+	for(int i = 0;i<MaterialCount;i++)
+	{
+		FbxSurfaceMaterial* Material = pScene->GetMaterial(i);
+
+#pragma region 遇到了再说
+		//    const FbxImplementation* lImplementation = LookForImplementation(Material);
+		// if(lImplementation)
+		//        {
+		// 	
+		//            const FbxBindingTable* RootTable = lImplementation->GetRootTable();
+		//            FbxString FileName = RootTable->DescAbsoluteURL.Get();
+		//            FbxString TechniqueName = RootTable->DescTAG.Get(); 
+		//
+		//
+		//            const FbxBindingTable* Table = lImplementation->GetRootTable();
+		//            size_t lEntryNum = Table->GetEntryCount();
+		//
+		//            for(int i=0;i <(int)lEntryNum; ++i)
+		//            {
+		//                const FbxBindingTableEntry& Entry = Table->GetEntry(i);
+		//                const char* EntrySrcType = Entry.GetEntryType(true);
+		//            	
+		//                FbxProperty FbxProp;
+		//                if ( strcmp( FbxPropertyEntryView::sEntryType, EntrySrcType ) == 0 )
+		//                {   
+		//                    FbxProp = Material->FindPropertyHierarchical(Entry.GetSource()); 
+		//                    if(!FbxProp.IsValid())
+		//                    {
+		//                        FbxProp = Material->RootProperty.FindHierarchical(Entry.GetSource());
+		//                    }
+		//                	
+		//                }
+		//                else if( strcmp( FbxConstantEntryView::sEntryType, EntrySrcType ) == 0 )
+		//                {
+		//                    FbxProp = lImplementation->GetConstants().FindHierarchical(Entry.GetSource());
+		//                }
+		//            	
+		//                if(FbxProp.IsValid())
+		//                {
+		//                    if( FbxProp.GetSrcObjectCount<FbxTexture>() > 0 )
+		//                    {
+		//                        //do what you want with the textures
+		//                        for(int j=0; j<FbxProp.GetSrcObjectCount<FbxFileTexture>(); ++j)
+		//                        {
+		//                            FbxFileTexture *lTex = FbxProp.GetSrcObject<FbxFileTexture>(j);
+		//                            DisplayString("           File Texture: ", lTex->GetFileName());
+		//                        }
+		//                        for(int j=0; j<FbxProp.GetSrcObjectCount<FbxLayeredTexture>(); ++j)
+		//                        {
+		//                            FbxLayeredTexture *lTex = FbxProp.GetSrcObject<FbxLayeredTexture>(j);
+		//                            DisplayString("        Layered Texture: ", lTex->GetName());
+		//                        }
+		//                        for(int j=0; j<FbxProp.GetSrcObjectCount<FbxProceduralTexture>(); ++j)
+		//                        {
+		//                            FbxProceduralTexture *lTex = FbxProp.GetSrcObject<FbxProceduralTexture>(j);
+		//                            DisplayString("     Procedural Texture: ", lTex->GetName());
+		//                        }
+		//                    }
+		//                    else
+		//                    {
+		//                        FbxDataType lFbxType = FbxProp.GetPropertyDataType();
+		//                        FbxString blah = lFbxType.GetName();
+		//                        if(FbxBoolDT == lFbxType)
+		//                        {
+		//                            DisplayBool("                Bool: ", FbxProp.Get<FbxBool>() );
+		//                        }
+		//                        else if ( FbxIntDT == lFbxType ||  FbxEnumDT  == lFbxType )
+		//                        {
+		//                            DisplayInt("                Int: ", FbxProp.Get<FbxInt>());
+		//                        }
+		//                        else if ( FbxFloatDT == lFbxType)
+		//                        {
+		//                            DisplayDouble("                Float: ", FbxProp.Get<FbxFloat>());
+		//
+		//                        }
+		//                        else if ( FbxDoubleDT == lFbxType)
+		//                        {
+		//                            DisplayDouble("                Double: ", FbxProp.Get<FbxDouble>());
+		//                        }
+		//                        else if ( FbxStringDT == lFbxType
+		//                            ||  FbxUrlDT  == lFbxType
+		//                            ||  FbxXRefUrlDT  == lFbxType )
+		//                        {
+		//                            DisplayString("                String: ", FbxProp.Get<FbxString>().Buffer());
+		//                        }
+		//                        else if ( FbxDouble2DT == lFbxType)
+		//                        {
+		//                            FbxDouble2 lDouble2 = FbxProp.Get<FbxDouble2>();
+		//                            FbxVector2 lVect;
+		//                            lVect[0] = lDouble2[0];
+		//                            lVect[1] = lDouble2[1];
+		//
+		//                            Display2DVector("                2D vector: ", lVect);
+		//                        }
+		//                        else if ( FbxDouble3DT == lFbxType || FbxColor3DT == lFbxType)
+		//                        {
+		//                            FbxDouble3 lDouble3 = FbxProp.Get<FbxDouble3>();
+		//
+		//
+		//                            FbxVector4 lVect;
+		//                            lVect[0] = lDouble3[0];
+		//                            lVect[1] = lDouble3[1];
+		//                            lVect[2] = lDouble3[2];
+		//                            Display3DVector("                3D vector: ", lVect);
+		//                        }
+		//
+		//                        else if ( FbxDouble4DT == lFbxType || FbxColor4DT == lFbxType)
+		//                        {
+		//                            FbxDouble4 lDouble4 = FbxProp.Get<FbxDouble4>();
+		//                            FbxVector4 lVect;
+		//                            lVect[0] = lDouble4[0];
+		//                            lVect[1] = lDouble4[1];
+		//                            lVect[2] = lDouble4[2];
+		//                            lVect[3] = lDouble4[3];
+		//                            Display4DVector("                4D vector: ", lVect);
+		//                        }
+		//                        else if ( FbxDouble4x4DT == lFbxType)
+		//                        {
+		//                            FbxDouble4x4 lDouble44 = FbxProp.Get<FbxDouble4x4>();
+		//                            for(int j=0; j<4; ++j)
+		//                            {
+		//
+		//                                FbxVector4 lVect;
+		//                                lVect[0] = lDouble44[j][0];
+		//                                lVect[1] = lDouble44[j][1];
+		//                                lVect[2] = lDouble44[j][2];
+		//                                lVect[3] = lDouble44[j][3];
+		//                                Display4DVector("                4x4D vector: ", lVect);
+		//                            }
+		//
+		//                        }
+		//                    }
+		//
+		//                }   
+		//            }
+		//        }
+#pragma endregion
+	
+		FbxMaterialsInfo MaterialInfo = FbxMaterialsInfo();
+		if (Material->GetClassId().Is(FbxSurfacePhong::ClassId))
+		{
+			// We found a Phong material.  Display its properties.
+
+			// Display the Ambient Color
+	
+			MaterialInfo.Ambient.Color = ((FbxSurfacePhong *) Material)->Ambient.Get();
+			MaterialInfo.Ambient.Texture = GetMaterialTexture(Material, FbxSurfacePhong::sAmbient);
+			
+			MaterialInfo.Diffuse.Color = ((FbxSurfacePhong *) Material)->Diffuse.Get();
+			MaterialInfo.Diffuse.Texture = GetMaterialTexture(Material, FbxSurfacePhong::sDiffuse);
+
+			// Display the Specular Color (unique to Phong materials)
+			MaterialInfo.Specular.Color = ((FbxSurfacePhong *) Material)->Specular.Get();
+			MaterialInfo.Specular.Texture = GetMaterialTexture(Material, FbxSurfacePhong::sSpecular);
+            	
+			// Display the Emissive Color
+			MaterialInfo.Emissive.Color = ((FbxSurfacePhong *) Material)->Emissive.Get();
+			MaterialInfo.Emissive.Texture = GetMaterialTexture(Material, FbxSurfacePhong::sEmissive);
+
+			//Opacity is Transparency factor now
+			MFbxDouble1 =((FbxSurfacePhong *) Material)->TransparencyFactor;
+			MaterialInfo.Opacity.Factory = 1.0-MFbxDouble1.Get();
+
+			// Display the Shininess
+			MFbxDouble1 =((FbxSurfacePhong *) Material)->Shininess;
+			MaterialInfo.Opacity.Factory = MFbxDouble1.Get();
+            	
+			// Display the Reflectivity
+			MFbxDouble1 =((FbxSurfacePhong *) Material)->ReflectionFactor;
+			MaterialInfo.Reflectivity.Factory = MFbxDouble1.Get();
+		}
+		else if(Material->GetClassId().Is(FbxSurfaceLambert::ClassId) )
+		{
+			// We found a Lambert material. Display its properties.
+			// Display the Ambient Color
+			MaterialInfo.Ambient.Color = ((FbxSurfaceLambert *)Material)->Ambient.Get();
+			MaterialInfo.Ambient.Texture = GetMaterialTexture(Material, FbxSurfaceLambert::sAmbient);
+
+			// Display the Diffuse Color
+			MaterialInfo.Diffuse.Color = ((FbxSurfaceLambert *)Material)->Diffuse.Get();
+			MaterialInfo.Diffuse.Texture = GetMaterialTexture(Material, FbxSurfaceLambert::sDiffuse);
+
+			// Display the Emissive
+			MaterialInfo.Emissive.Color = ((FbxSurfaceLambert *)Material)->Emissive.Get();
+			MaterialInfo.Emissive.Texture = GetMaterialTexture(Material, FbxSurfaceLambert::sEmissive);
+
+			// Display the Opacity
+			MFbxDouble1 =((FbxSurfaceLambert *)Material)->TransparencyFactor;
+			MaterialInfo.Opacity.Factory =  1.0-MFbxDouble1.Get();
+			MaterialInfo.Opacity.Texture = GetMaterialTexture(Material, FbxSurfaceLambert::sTransparencyFactor);
+		}
+		MaterialInfos.insert(pair<uint64_t,FbxMaterialsInfo>(Material->GetUniqueID(),MaterialInfo));
+	}
+}
+
+const char* FbxSdkLibrary::GetMaterialTexture(FbxSurfaceMaterial* pMaterial,const char* Property)
+{
+	//先找到Property对应的LayeredTexture
+	FbxProperty MProperty = pMaterial->FindProperty(Property);
+	int TextureCount = MProperty.GetSrcObjectCount<FbxTexture>();
+	if(TextureCount == 0)
+	{
+		return "";
+	}
+	
+	for(int i=0; i<TextureCount; ++i)
+	{
+		const char* FileName;
+		FbxLayeredTexture *LayeredTexture = MProperty.GetSrcObject<FbxLayeredTexture>(i);
+		if(LayeredTexture)
+		{
+			//获得Texture
+			for(int j = 0; j<LayeredTexture->GetSrcObjectCount<FbxTexture>(); ++j)
+			{
+				FbxTexture* Texture = LayeredTexture->GetSrcObject<FbxTexture>(j);
+				if(Texture)
+				{
+					FileName =  FbxCast<FbxFileTexture>(Texture)->GetFileName();
+					return FileName;
+				}
+			}
+		}
+		else
+		{
+			//no layered texture simply get on the property
+			FbxTexture* Texture = MProperty.GetSrcObject<FbxTexture>(i);
+			FileName = FbxCast<FbxFileTexture>(Texture)->GetFileName();
+			return FileName;
+		}
+	}
+	
+
+	return "";
 }
