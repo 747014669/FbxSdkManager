@@ -49,6 +49,16 @@ struct FbxSection
    uint64_t MaterialIds;
 };
 
+struct FbxNodeInfo
+{
+ uint64_t ParentId = 0;
+ uint64_t Id;
+ const char* NodeName;
+ uint64_t LinkMeshId = 0;
+ vector<uint64_t> LinkMaterialsId;
+ vector<map<const char*,const char*>> Metadata;
+};
+
 class DLL_API FbxSdkLibrary
 {
 public:
@@ -77,7 +87,7 @@ public:
     * @brief 获得Mesh的控制点
     */
     static void GetMeshControlPoint(const FbxMesh* pMesh, vector<FbxVector4>& ControlPoints);
-    /**
+   /**
     * @brief 获得Mesh的顶点颜色信息
     */
     static void GetPolygonVertexColor(FbxMesh* pMesh,int PolygonIndex,int ControlPointIndex,FbxColor& Color);

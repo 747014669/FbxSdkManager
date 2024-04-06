@@ -4,7 +4,7 @@
 
 /* Tab character ("\t") counter */
 int numTabs = 0;
-
+vector<FbxNodeInfo> NodeInfos;
 /**
  * Print the required number of tabs.
  */
@@ -60,11 +60,31 @@ void PrintAttribute(FbxNodeAttribute* pAttribute) {
  */
 void PrintNode(FbxNode* pNode) {
     
-
-    // if(FbxMesh* lMesh = (FbxMesh*) pNode->GetNodeAttribute ())
-    // {
-    //     FBXSDK_printf("%llu\n",lMesh->GetUniqueID());
-    // }
+    for(int i = 0; i < pNode->GetChildCount(); i++)
+    {
+       PrintNode(pNode->GetChild(i));
+        
+    }
+    FbxNodeInfo GeometryInfo;
+    GeometryInfo.NodeName = pNode->GetName();
+    GeometryInfo.Id = pNode->GetUniqueID();
+    if(pNode->GetNodeAttribute())
+    {
+        if(pNode->GetNodeAttribute()->GetAttributeType() == FbxNodeAttribute::eMesh)
+        {
+            if(pNode->GetParent())
+            {
+                GeometryInfo.ParentId = pNode->GetParent()->GetUniqueID();
+            }
+            GeometryInfo.LinkMeshId = pNode->GetMesh()->GetUniqueID();
+            for(int i = 0;i<pNode->GetMaterialCount();++i)
+            {
+                GeometryInfo.LinkMaterialsId.push_back(pNode->GetMaterial(i)->GetUniqueID());
+            }
+        }
+    }
+    NodeInfos.push_back(GeometryInfo);
+    FBXSDK_printf("Parent:%llu,SelfId:%llu,Name:%s,MeshId:%llu,MaterialsNum:%llu \n",GeometryInfo.ParentId,GeometryInfo.Id,GeometryInfo.NodeName,GeometryInfo.LinkMeshId,GeometryInfo.LinkMaterialsId.size());
 }
 
 /**
@@ -74,7 +94,7 @@ void PrintNode(FbxNode* pNode) {
 int main(int argc, char** argv) {
 
     // Change the following filename to a suitable filename value.
-    const char* lFilename = R"(C:\Users\Administrator\Desktop\Instance.fbx)";
+    const char* lFilename = R"(C:\Users\Administrator\Desktop\Instances.fbx)";
 
     // Initialize the SDK manager. This object handles all our memory management.
     FbxManager* lSdkManager = FbxManager::Create();
@@ -134,11 +154,11 @@ int main(int argc, char** argv) {
     // Print the nodes of the scene and their attributes recursively.
     // Note that we are not printing the root node because it should
     // not contain any attributes.
-    // FbxNode* lRootNode = lScene->GetRootNode();
-    // if (lRootNode) {
-    //     for (int i = 0; i < lRootNode->GetChildCount(); i++)
-    //         PrintNode(lRootNode->GetChild(i));
-    // }
+    FbxNode* lRootNode = lScene->GetRootNode();
+    if (lRootNode) {
+        for (int i = 0; i < lRootNode->GetChildCount(); i++)
+            PrintNode(lRootNode->GetChild(i));
+    }
     // Destroy the SDK manager and all the other objects it was handling.
     lSdkManager->Destroy();
     system("Pause");
