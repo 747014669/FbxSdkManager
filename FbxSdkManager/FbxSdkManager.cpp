@@ -94,7 +94,7 @@ void PrintNode(FbxNode* pNode) {
 int main(int argc, char** argv) {
 
     // Change the following filename to a suitable filename value.
-    const char* lFilename = R"(C:\Users\Administrator\Desktop\Instances.fbx)";
+    const char* lFilename = R"(C:\Users\Administrator\Desktop\Instance.fbx)";
 
     // Initialize the SDK manager. This object handles all our memory management.
     FbxManager* lSdkManager = FbxManager::Create();
@@ -120,45 +120,35 @@ int main(int argc, char** argv) {
     lImporter->Import(lScene);
     // The file is imported; so get rid of the importer.
     lImporter->Destroy();
+   
     for(int i= 0;i<lScene->GetGeometryCount();i++)
     {
-        auto Name = lScene->GetGeometry(i)->GetName();
-        auto Id = lScene->GetGeometry(i)->GetUniqueID();
-
-        FBXSDK_printf("name:%s,Id%llu\n",Name,Id);
-        
+        FBXSDK_printf("Name:%s,ID:%llu \n",lScene->GetGeometry(i)->GetName(),lScene->GetGeometry(i)->GetUniqueID());
     }
-  
-    map<uint64_t,map<uint64_t,FbxSection>> Geometries = FbxSdkLibrary::GetFbxGeometries(lScene);
+
+
+    int k = 0;
+    map<uint64_t,FbxGeometryInfo> Geometries = FbxSdkLibrary::GetFbxGeometries(lScene);
     for(auto it = Geometries.begin();it!=Geometries.end();it++)
     {
-        FBXSDK_printf("Geometry Id:%llu:======= \n",it->first);
-        for(auto it2 = it->second.begin();it2!=it->second.end();it2++)
-        {
-            FBXSDK_printf("Mateiral Id:%llu,FbxSecion:======= \n",it2->first);
-            for(int i =0;i < it2->second.Triangle.size();i++)
-            {
-                FBXSDK_printf("Triangle:%d\t,Normal:(%f,%f,%f)\t \n",
-                    it2->second.Triangle[i],it2->second.Normals[i][0],it2->second.Normals[i][1],it2->second.Normals[i][2]);
-            }
-        }
-        
+ 
+        FBXSDK_printf("GeometryId:%llu,MeshControlPointsize:%llu,SectionNum:%llu \n",it->first,it->second.ControlPoints.size(),it->second.Sections.size());
     }
         
-    map<uint64_t,FbxMaterialsInfo> MaterialInfos;
-    FbxSdkLibrary::GetFbxMaterials(lScene,MaterialInfos);
-    for(auto it = MaterialInfos.begin();it!=MaterialInfos.end();it++)
-    {
-        FBXSDK_printf("Id:%llu,material:%s\n",it->first,it->second.Diffuse.Texture);
-    }
+    // map<uint64_t,FbxMaterialsInfo> MaterialInfos;
+    // FbxSdkLibrary::GetFbxMaterials(lScene,MaterialInfos);
+    // for(auto it = MaterialInfos.begin();it!=MaterialInfos.end();it++)
+    // {
+    //     FBXSDK_printf("Id:%llu,material:%s\n",it->first,it->second.Diffuse.Texture);
+    // }
     // Print the nodes of the scene and their attributes recursively.
     // Note that we are not printing the root node because it should
     // not contain any attributes.
-    FbxNode* lRootNode = lScene->GetRootNode();
-    if (lRootNode) {
-        for (int i = 0; i < lRootNode->GetChildCount(); i++)
-            PrintNode(lRootNode->GetChild(i));
-    }
+    // FbxNode* lRootNode = lScene->GetRootNode();
+    // if (lRootNode) {
+    //     for (int i = 0; i < lRootNode->GetChildCount(); i++)
+    //         PrintNode(lRootNode->GetChild(i));
+    //}
     // Destroy the SDK manager and all the other objects it was handling.
     lSdkManager->Destroy();
     system("Pause");

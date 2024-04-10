@@ -148,43 +148,58 @@ bool FbxSdkLibrary::LoadScene(FbxManager* pManager, FbxDocument* pScene, const c
     return lStatus;
 }
 
-void FbxSdkLibrary::GetMetaData(FbxScene* pScene, map<string, string>& MetaData)
+void FbxSdkLibrary::GetMetaData(FbxScene* pScene, map<const char*, const char*>& MetaData)
 {
 	FbxDocumentInfo* sceneInfo = pScene->GetSceneInfo();
 	if (sceneInfo)
 	{
-		MetaData.insert(pair<string,string>("Title",sceneInfo->mTitle.Buffer()));
-		MetaData.insert(pair<string,string>("Subject",sceneInfo->mSubject.Buffer()));
-		MetaData.insert(pair<string,string>("Author",sceneInfo->mAuthor.Buffer()));
-		MetaData.insert(pair<string,string>("Keywords",sceneInfo->mKeywords.Buffer()));
-		MetaData.insert(pair<string,string>("Revision",sceneInfo->mRevision.Buffer()));
-		MetaData.insert(pair<string,string>("Comment",sceneInfo->mComment.Buffer()));
+		MetaData.insert(pair<const char*, const char*>("Title",sceneInfo->mTitle.Buffer()));
+		MetaData.insert(pair<const char*, const char*>("Subject",sceneInfo->mSubject.Buffer()));
+		MetaData.insert(pair<const char*, const char*>("Author",sceneInfo->mAuthor.Buffer()));
+		MetaData.insert(pair<const char*, const char*>("Keywords",sceneInfo->mKeywords.Buffer()));
+		MetaData.insert(pair<const char*, const char*>("Revision",sceneInfo->mRevision.Buffer()));
+		MetaData.insert(pair<const char*, const char*>("Comment",sceneInfo->mComment.Buffer()));
 	}
 }
 
-map<uint64_t, map<uint64_t, FbxSection>> FbxSdkLibrary::GetFbxGeometries(FbxScene* const pScene)
+map<uint64_t, FbxGeometryInfo> FbxSdkLibrary::GetFbxGeometries(FbxScene* const pScene)
 {
-	map<uint64_t,map<uint64_t, FbxSection>> Geomteries;
+	map<uint64_t,FbxGeometryInfo> Geometries;
 	
 	if(!pScene)
 	{
-		return Geomteries;
+		FBXSDK_printf("FbxScene is null\n");
+		return Geometries;
 	}
 	//Geometry参数
-	vector<FbxVector4> ControlPoints;
-	FbxGeometryConverter converter = FbxGeometryConverter(pScene->GetFbxManager());
-	for(int i = 0;i<pScene->GetGeometryCount();++i)
+	FBXSDK_printf("FbxScene is right,BeginConverter\n");
+	//三角化
+	FbxGeometryConverter converter = FbxGeometryConverter( pScene->GetFbxManager());
+	FbxMesh* pMesh = nullptr;
+	//递减for循环
+	for(int i = pScene->GetGeometryCount()-1;i >= 0;i--)
 	{
-		FbxMesh* pMesh = (FbxMesh*)pScene->GetGeometry(i);
-		//先三角化
+		FbxGeometry* geometry = pScene->GetGeometry(i);
+		pMesh = static_cast<FbxMesh*>(geometry);
+		
 		if(!pMesh->IsTriangleMesh())
 		{
-			pMesh = (FbxMesh*)converter.Triangulate(pScene->GetGeometry(i), true);
+			FBXSDK_printf("BeginConverteraaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n");
+			//这里如果替换的话就会把最后一个Geometry覆盖掉
+			pMesh = static_cast<FbxMesh*>(converter.Triangulate(geometry, true));
 		}
+		
+		//Id用Scene获得的Id就不会错
+		const uint64_t ID = pMesh->GetUniqueID();
+		Geometries.insert(pair<uint64_t,FbxGeometryInfo>(ID,FbxGeometryInfo()));
+		FbxGeometryInfo& GeometryInfo = Geometries[ID];
+		
+		
 		int j,k, PolygonCount = pMesh->GetPolygonCount();
 		//ControlPoints
-		GetMeshControlPoint(pMesh,ControlPoints);
-		
+		GetMeshControlPoint(pMesh,GeometryInfo.ControlPoints);
+	
+		FbxSection section;
 		//三角面信息
 		vector<int> Triangle(3 * PolygonCount);
 		vector<FbxColor> Colors(3 * PolygonCount);
@@ -192,57 +207,57 @@ map<uint64_t, map<uint64_t, FbxSection>> FbxSdkLibrary::GetFbxGeometries(FbxScen
 		vector<FbxVector4> Normals(3 * PolygonCount);
 		vector<FbxVector4> Tangents(3 * PolygonCount);
 		vector<FbxVector4> Binormals(3 * PolygonCount);
-		vector<uint64_t> MaterialIds;
+		vector<uint64_t> MaterialIds ={};
 		//获得Polygon的信息
 		for (j = 0;j<PolygonCount;++j)
 		{
-			
-			for(k =0;k<pMesh->GetPolygonSize(j);++k )
-			{
-				//获得三角面信息,小于0则意味着没找到对应的点
-				int ControlPointIndex = pMesh->GetPolygonVertex(j, k);
-				if(ControlPointIndex >=0)
-				{
-					int Index = pMesh->GetPolygonSize(j)*j+k;
-					Triangle[Index] = ControlPointIndex;
-					GetPolygonVertexColor(pMesh,j,ControlPointIndex,Colors[Index]);
-					GetPolygonUV(pMesh,j,ControlPointIndex,k,UVs[Index]);
-				}
-			}
-			uint64_t MaterialId;
-			GetPolygonNormal(pMesh,j,Normals[j * pMesh->GetPolygonSize(j)]);
-			GetPolygonTangent(pMesh,j,Tangents[j * pMesh->GetPolygonSize(j)]);
-			GetPolygonBinormal(pMesh,j,Binormals[j * pMesh->GetPolygonSize(j)]);
-			GetPolygonMaterialId(pMesh,j,MaterialId);
-			MaterialIds.push_back(MaterialId);
+			int PolygonSize = pMesh->GetPolygonSize(j);
+			FBXSDK_printf("pMesh Name:%s,Polygon size:%d \n",pMesh->GetName(),PolygonSize);
+			 for(k =0;k<PolygonSize;++k )
+			 {
+			 	//获得三角面信息,小于0则意味着没找到对应的点
+			 	int ControlPointIndex = pMesh->GetPolygonVertex(j, k);
+			 	if(ControlPointIndex >=0)
+			 	{
+			 		int Index = PolygonSize*j+k;
+			 		Triangle[Index] = ControlPointIndex;
+			 		
+			 		Colors[Index] = GetPolygonVertexColor(pMesh,j,ControlPointIndex);
+			 		GetPolygonUV(pMesh,j,ControlPointIndex,k,UVs[Index]);
+			 	}
+			 }
+			 uint64_t MaterialId;
+			 GetPolygonNormal(pMesh,j,Normals[j * pMesh->GetPolygonSize(j)]);
+			 GetPolygonTangent(pMesh,j,Tangents[j * pMesh->GetPolygonSize(j)]);
+			 GetPolygonBinormal(pMesh,j,Binormals[j * pMesh->GetPolygonSize(j)]);
+			 GetPolygonMaterialId(pMesh,j,MaterialId);
+			 MaterialIds.push_back(MaterialId);
 		}
+		
 		//根据材质分组
-		map<uint64_t,FbxSection> Sections;
-		for(int MatId = 0 ; MatId < (int)MaterialIds.size(); ++MatId)
+		map<uint64_t,FbxSection>* Sections = &GeometryInfo.Sections ;
+		for(int MatIndex = 0 ; MatIndex < (int)MaterialIds.size(); MatIndex++)
 		{
-			
-			if(Sections.count(MaterialIds[MatId]) == 0)
+			//如果当前材质没有记录先加入
+			if(Sections->count(MaterialIds[MatIndex]) == 0)
 			{
-				FbxSection section;
-				Sections.insert(pair<uint64_t,FbxSection>(MaterialIds[MatId],section));
+				Sections->insert(pair<uint64_t,FbxSection>(MaterialIds[MatIndex],FbxSection()));
 			}
-
-			FbxSection* Geom = &Sections[MaterialIds[MatId]];
+		
+			FbxSection* Section = &(*Sections)[MaterialIds[MatIndex]];
 			for(int l=0;l<3;++l)
 			{
-				Geom->Triangle.push_back(Triangle[3*MatId+l]);
-				Geom->Colors.push_back(Colors[3*MatId+l]);
-				Geom->UVs.push_back(UVs[3*MatId+l]);
-				Geom->Normals.push_back(Normals[3*MatId+l]);
-				Geom->Tangents.push_back(Tangents[3*MatId+l]);
-				Geom->Binormals.push_back(Binormals[3*MatId+l]);
-				Geom->MaterialIds = MaterialIds[MatId];
+				Section->Triangle.push_back(Triangle[3*MatIndex+l]);
+				Section->Colors.push_back(Colors[3*MatIndex+l]);
+				Section->UVs.push_back(UVs[3*MatIndex+l]);
+				Section->Normals.push_back(Normals[3*MatIndex+l]);
+				Section->Tangents.push_back(Tangents[3*MatIndex+l]);
+				Section->Binormals.push_back(Binormals[3*MatIndex+l]);
 			}
 		}
-
-		Geomteries.insert(pair<uint64_t,map<uint64_t, FbxSection>>(pMesh->GetUniqueID(),Sections));
 	}
-	return Geomteries;
+	
+	return Geometries;
 }
 
 void FbxSdkLibrary::GetMeshControlPoint(const FbxMesh* pMesh,vector<FbxVector4>& ControlPoints)
@@ -259,8 +274,9 @@ void FbxSdkLibrary::GetMeshControlPoint(const FbxMesh* pMesh,vector<FbxVector4>&
 	}
 }
 
-void FbxSdkLibrary::GetPolygonVertexColor(FbxMesh* pMesh, int PolygonIndex, int ControlPointIndex, FbxColor& Color)
+FbxColor FbxSdkLibrary::GetPolygonVertexColor(FbxMesh* pMesh, int PolygonIndex, int ControlPointIndex)
 {
+	FbxColor Color;
 	for (int l = 0; l < pMesh->GetElementVertexColorCount(); l++)
 	{
 		
@@ -315,6 +331,7 @@ void FbxSdkLibrary::GetPolygonVertexColor(FbxMesh* pMesh, int PolygonIndex, int 
 		}
 		
 	}
+	return Color;
 }
 
 void FbxSdkLibrary::GetPolygonUV(FbxMesh* pMesh, int PolygonIndex, int ControlPointIndex, int PositionInPolygon,FbxVector2& UV)
@@ -763,3 +780,6 @@ const char* FbxSdkLibrary::GetMaterialTexture(FbxSurfaceMaterial* pMaterial,cons
 
 	return "";
 }
+
+
+

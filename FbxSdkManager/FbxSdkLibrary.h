@@ -2,7 +2,6 @@
 #include <fbxsdk.h>
 #include <map>
 #include <vector>
-#include <array>
 
 #define DLLTEST_EXPORTS
 #ifdef DLLTEST_EXPORTS
@@ -27,6 +26,23 @@ struct FbxMaterialFactorProperty
  const char* Texture;
 };
 
+struct FbxSection
+{
+ vector<int> Triangle;
+ vector<FbxColor> Colors;
+ vector<FbxVector2> UVs;
+ vector<FbxVector4> Normals;
+ vector<FbxVector4> Tangents;
+ vector<FbxVector4> Binormals;
+};
+
+struct FbxGeometryInfo
+{
+ vector<FbxVector4> ControlPoints;
+ map<uint64_t,FbxSection> Sections;
+ 
+};
+
 struct FbxMaterialsInfo
 {
  FbxMaterialColorProperty Ambient;
@@ -38,16 +54,7 @@ struct FbxMaterialsInfo
  FbxMaterialFactorProperty Reflectivity;
 };
 
-struct FbxSection
-{
-   vector<int> Triangle;
-   vector<FbxColor> Colors;
-   vector<FbxVector2> UVs;
-   vector<FbxVector4> Normals;
-   vector<FbxVector4> Tangents;
-   vector<FbxVector4> Binormals;
-   uint64_t MaterialIds;
-};
+
 
 struct FbxNodeInfo
 {
@@ -77,11 +84,11 @@ public:
     /**
     * @brief 获得Fbx文件的metadata
     */
-    static void GetMetaData(FbxScene* pScene,map<string, string>& MetaData);
+    static void GetMetaData(FbxScene* pScene, map<const char*, const char*>& MetaData);
     /**
     * @brief 获得Scene里面的所有Geometry
     */
-    static map<uint64_t, map<uint64_t, FbxSection>> GetFbxGeometries(FbxScene* const pScene);
+    static map<uint64_t, FbxGeometryInfo> GetFbxGeometries(FbxScene* pScene);
     
     /**
     * @brief 获得Mesh的控制点
@@ -90,7 +97,7 @@ public:
    /**
     * @brief 获得Mesh的顶点颜色信息
     */
-    static void GetPolygonVertexColor(FbxMesh* pMesh,int PolygonIndex,int ControlPointIndex,FbxColor& Color);
+    static FbxColor GetPolygonVertexColor(FbxMesh* pMesh, int PolygonIndex, int ControlPointIndex);
     /**
     * @brief 获得Mesh的顶点的UV信息
     */
@@ -118,8 +125,9 @@ public:
     static void GetFbxMaterials(FbxScene* pScene,map<uint64_t,FbxMaterialsInfo>& MaterialInfos);
 
     static const char* GetMaterialTexture(FbxSurfaceMaterial* pMaterial,const char* Property);
- 
-    static int Test(){return 100;}
-    
+
+
+private:
+ //static void GetGeomteryInfo(FbxGeometry* pGeometry,FbxGeometryInfo& GeometryInfo);
 };
 
