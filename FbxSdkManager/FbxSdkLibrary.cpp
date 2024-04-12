@@ -212,7 +212,6 @@ map<uint64_t, FbxGeometryInfo> FbxSdkLibrary::GetFbxGeometries(FbxScene* const p
 		for (j = 0;j<PolygonCount;++j)
 		{
 			int PolygonSize = pMesh->GetPolygonSize(j);
-			FBXSDK_printf("pMesh Name:%s,Polygon size:%d \n",pMesh->GetName(),PolygonSize);
 			 for(k =0;k<PolygonSize;++k )
 			 {
 			 	//获得三角面信息,小于0则意味着没找到对应的点
@@ -227,9 +226,9 @@ map<uint64_t, FbxGeometryInfo> FbxSdkLibrary::GetFbxGeometries(FbxScene* const p
 			 	}
 			 }
 			 uint64_t MaterialId;
-			 GetPolygonNormal(pMesh,j,Normals[j * pMesh->GetPolygonSize(j)]);
-			 GetPolygonTangent(pMesh,j,Tangents[j * pMesh->GetPolygonSize(j)]);
-			 GetPolygonBinormal(pMesh,j,Binormals[j * pMesh->GetPolygonSize(j)]);
+			 GetPolygonNormal(pMesh,j,Normals[j * PolygonSize ]);
+			 GetPolygonTangent(pMesh,j,Tangents[j * PolygonSize ]);
+			 GetPolygonBinormal(pMesh,j,Binormals[j * PolygonSize ]);
 			 GetPolygonMaterialId(pMesh,j,MaterialId);
 			 MaterialIds.push_back(MaterialId);
 		}
@@ -398,11 +397,11 @@ void FbxSdkLibrary::GetPolygonNormal(FbxMesh* pMesh, int PolygonIndex, FbxVector
 			switch (ENolrmal->GetReferenceMode())
 			{
 			case FbxGeometryElement::eDirect:
-				Normal = ENolrmal->GetDirectArray().GetAt(PolygonIndex);
+				Normal = ENolrmal->GetDirectArray().GetAt(PolygonIndex*3);
 				break;
 			case FbxGeometryElement::eIndexToDirect:
 				{
-					int id = ENolrmal->GetIndexArray().GetAt(PolygonIndex);
+					int id = ENolrmal->GetIndexArray().GetAt(PolygonIndex*3);
 					Normal = ENolrmal->GetDirectArray().GetAt(id);
 					
 				}
@@ -427,11 +426,11 @@ void FbxSdkLibrary::GetPolygonTangent(FbxMesh* pMesh, int PolygonIndex, FbxVecto
 			switch (ElTangent->GetReferenceMode())
 			{
 			case FbxGeometryElement::eDirect:
-				Tangent = ElTangent->GetDirectArray().GetAt(PolygonIndex);
+				Tangent = ElTangent->GetDirectArray().GetAt(PolygonIndex*3);
 				break;
 			case FbxGeometryElement::eIndexToDirect:
 				{
-					int id = ElTangent->GetIndexArray().GetAt(PolygonIndex);
+					int id = ElTangent->GetIndexArray().GetAt(PolygonIndex*3);
 					Tangent = ElTangent->GetDirectArray().GetAt(id);
 				}
 				break;
@@ -456,12 +455,12 @@ void FbxSdkLibrary::GetPolygonBinormal(FbxMesh* pMesh, int PolygonIndex, FbxVect
 			{
 			case FbxGeometryElement::eDirect:
 				{
-					Binormal = ElBinormal->GetDirectArray().GetAt(PolygonIndex);
+					Binormal = ElBinormal->GetDirectArray().GetAt(PolygonIndex*3);
 				}
 				break;
 			case FbxGeometryElement::eIndexToDirect:
 				{
-					int id = ElBinormal->GetIndexArray().GetAt(PolygonIndex);
+					int id = ElBinormal->GetIndexArray().GetAt(PolygonIndex*3);
 					Binormal = ElBinormal->GetDirectArray().GetAt(id);
 				}
 				break;
@@ -781,5 +780,11 @@ const char* FbxSdkLibrary::GetMaterialTexture(FbxSurfaceMaterial* pMaterial,cons
 	return "";
 }
 
-
+const char* FbxSdkLibrary::test()
+{
+	
+		FbxString AA = "AAAA";
+		return AA.Buffer();
+	
+}
 

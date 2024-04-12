@@ -126,8 +126,9 @@ public:
 
     static const char* GetMaterialTexture(FbxSurfaceMaterial* pMaterial,const char* Property);
 
+    static const char* test();
 
 private:
- //static void GetGeomteryInfo(FbxGeometry* pGeometry,FbxGeometryInfo& GeometryInfo);
+
 };
 
