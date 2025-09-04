@@ -1,4 +1,9 @@
 #include "FbxSdkLibrary.h"
+#include "FbxSdkException.h"
+
+using std::vector;
+using std::map;
+using std::pair;
 
 #ifdef IOS_REF
     #undef  IOS_REF
@@ -12,8 +17,8 @@ void FbxSdkLibrary::InitializeSdkObjects(FbxManager*& pManager, FbxScene*& pScen
     pManager = FbxManager::Create();
     if( !pManager )
     {
-        FBXSDK_printf("Error: Unable to create FBX Manager!\n");
-        return;
+        FbxErrorHandler::LogError("Unable to create FBX Manager!");
+        throw FbxSdkException(FbxSdkException::MANAGER_CREATE_FAILED, "Failed to create FbxManager instance");
     }
     else FBXSDK_printf("Autodesk FBX SDK version %s\n", pManager->GetVersion());
 
@@ -29,7 +34,8 @@ void FbxSdkLibrary::InitializeSdkObjects(FbxManager*& pManager, FbxScene*& pScen
     pScene = FbxScene::Create(pManager, "My Scene");
     if( !pScene )
     {
-        FBXSDK_printf("Error: Unable to create FBX scene!\n");
+        FbxErrorHandler::LogError("Unable to create FBX scene!");
+        throw FbxSdkException(FbxSdkException::SCENE_CREATE_FAILED, "Failed to create FbxScene instance");
     }
 }
 
@@ -56,15 +62,21 @@ bool FbxSdkLibrary::LoadScene(FbxManager* pManager, FbxDocument* pScene, const c
     if( !lImportStatus )
     {
         FbxString error = lImporter->GetStatus().GetErrorString();
-        FBXSDK_printf("Call to FbxImporter::Initialize() failed.\n");
-        FBXSDK_printf("Error returned: %s\n\n", error.Buffer());
+        std::string errorMsg = "Failed to initialize importer: " + std::string(error.Buffer());
+        FbxErrorHandler::LogError(errorMsg);
 
         if (lImporter->GetStatus().GetCode() == FbxStatus::eInvalidFileVersion)
         {
-            FBXSDK_printf("FBX file format version for this FBX SDK is %d.%d.%d\n", lSDKMajor, lSDKMinor, lSDKRevision);
-            FBXSDK_printf("FBX file format version for file '%s' is %d.%d.%d\n\n", pFilename, lFileMajor, lFileMinor, lFileRevision);
+            std::string versionMsg = "FBX SDK version: " + std::to_string(lSDKMajor) + "." + 
+                                   std::to_string(lSDKMinor) + "." + std::to_string(lSDKRevision) +
+                                   " | File version: " + std::to_string(lFileMajor) + "." + 
+                                   std::to_string(lFileMinor) + "." + std::to_string(lFileRevision);
+            FbxErrorHandler::LogError(versionMsg);
+            lImporter->Destroy();
+            throw FbxSdkException(FbxSdkException::INVALID_FILE_VERSION, versionMsg);
         }
 
+        lImporter->Destroy();
         return false;
     }
 
@@ -168,25 +180,36 @@ map<uint64_t, FbxGeometryInfo> FbxSdkLibrary::GetFbxGeometries(FbxScene* const p
 	
 	if(!pScene)
 	{
-		FBXSDK_printf("FbxScene is null\n");
+		FbxErrorHandler::LogError("FbxScene is null");
 		return Geometries;
 	}
 	//Geometry参数
 	FBXSDK_printf("FbxScene is right,BeginConverter\n");
-	//三角化
-	FbxGeometryConverter converter = FbxGeometryConverter( pScene->GetFbxManager());
-	FbxMesh* pMesh = nullptr;
-	//递减for循环
-	for(int i = pScene->GetGeometryCount()-1;i >= 0;i--)
+	//三角化 - 只创建一次转换器
+	FbxGeometryConverter converter(pScene->GetFbxManager());
+	
+	// 预先获取几何体数量
+	const int geometryCount = pScene->GetGeometryCount();
+	
+	// 使用正向循环，避免混淆
+	for(int i = 0; i < geometryCount; ++i)
 	{
 		FbxGeometry* geometry = pScene->GetGeometry(i);
-		pMesh = static_cast<FbxMesh*>(geometry);
+		if(!geometry || geometry->GetAttributeType() != FbxNodeAttribute::eMesh)
+			continue;
+			
+		FbxMesh* pMesh = static_cast<FbxMesh*>(geometry);
 		
+		// 如果不是三角网格，进行三角化
 		if(!pMesh->IsTriangleMesh())
 		{
-			FBXSDK_printf("BeginConverteraaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n");
-			//这里如果替换的话就会把最后一个Geometry覆盖掉
-			pMesh = static_cast<FbxMesh*>(converter.Triangulate(geometry, true));
+			FBXSDK_printf("Triangulating mesh %d\n", i);
+			// 三角化并替换原始网格
+			FbxMesh* triangulatedMesh = converter.TriangulateMesh(pMesh);
+			if(triangulatedMesh && triangulatedMesh != pMesh)
+			{
+				pMesh = triangulatedMesh;
+			}
 		}
 		
 		//Id用Scene获得的Id就不会错
@@ -200,14 +223,21 @@ map<uint64_t, FbxGeometryInfo> FbxSdkLibrary::GetFbxGeometries(FbxScene* const p
 		GetMeshControlPoint(pMesh,GeometryInfo.ControlPoints);
 	
 		FbxSection section;
-		//三角面信息
-		vector<int> Triangle(3 * PolygonCount);
-		vector<FbxColor> Colors(3 * PolygonCount);
-		vector<FbxVector2> UVs(3 * PolygonCount);
-		vector<FbxVector4> Normals(3 * PolygonCount);
-		vector<FbxVector4> Tangents(3 * PolygonCount);
-		vector<FbxVector4> Binormals(3 * PolygonCount);
-		vector<uint64_t> MaterialIds ={};
+			//三角面信息 - 预分配内存以提高性能
+	vector<int> Triangle;
+	Triangle.reserve(3 * PolygonCount);
+	vector<FbxColor> Colors;
+	Colors.reserve(3 * PolygonCount);
+	vector<FbxVector2> UVs;
+	UVs.reserve(3 * PolygonCount);
+	vector<FbxVector4> Normals;
+	Normals.reserve(3 * PolygonCount);
+	vector<FbxVector4> Tangents;
+	Tangents.reserve(3 * PolygonCount);
+	vector<FbxVector4> Binormals;
+	Binormals.reserve(3 * PolygonCount);
+	vector<uint64_t> MaterialIds;
+	MaterialIds.reserve(PolygonCount);
 		//获得Polygon的信息
 		for (j = 0;j<PolygonCount;++j)
 		{
@@ -218,23 +248,31 @@ map<uint64_t, FbxGeometryInfo> FbxSdkLibrary::GetFbxGeometries(FbxScene* const p
 			 	int ControlPointIndex = pMesh->GetPolygonVertex(j, k);
 			 	if(ControlPointIndex >=0)
 			 	{
-			 		int Index = PolygonSize*j+k;
-			 		Triangle[Index] = ControlPointIndex;
-			 		
-			 		Colors[Index] = GetPolygonVertexColor(pMesh,j,ControlPointIndex);
-			 		GetPolygonUV(pMesh,j,ControlPointIndex,k,UVs[Index]);
+			 		Triangle.push_back(ControlPointIndex);
+			 		Colors.push_back(GetPolygonVertexColor(pMesh,j,ControlPointIndex));
+			 		FbxVector2 uv;
+			 		GetPolygonUV(pMesh,j,ControlPointIndex,k,uv);
+			 		UVs.push_back(uv);
 			 	}
 			 }
 			 uint64_t MaterialId;
-			 GetPolygonNormal(pMesh,j,Normals[j * PolygonSize ]);
-			 GetPolygonTangent(pMesh,j,Tangents[j * PolygonSize ]);
-			 GetPolygonBinormal(pMesh,j,Binormals[j * PolygonSize ]);
+			 FbxVector4 normal, tangent, binormal;
+			 GetPolygonNormal(pMesh,j,normal);
+			 GetPolygonTangent(pMesh,j,tangent);
+			 GetPolygonBinormal(pMesh,j,binormal);
+			 // 为每个顶点添加相同的法线、切线和副法线
+			 for(int v = 0; v < PolygonSize; ++v) {
+			 	Normals.push_back(normal);
+			 	Tangents.push_back(tangent);
+			 	Binormals.push_back(binormal);
+			 }
 			 GetPolygonMaterialId(pMesh,j,MaterialId);
 			 MaterialIds.push_back(MaterialId);
 		}
 		
 		//根据材质分组
 		map<uint64_t,FbxSection>* Sections = &GeometryInfo.Sections ;
+		int vertexIndex = 0;
 		for(int MatIndex = 0 ; MatIndex < (int)MaterialIds.size(); MatIndex++)
 		{
 			//如果当前材质没有记录先加入
@@ -244,14 +282,18 @@ map<uint64_t, FbxGeometryInfo> FbxSdkLibrary::GetFbxGeometries(FbxScene* const p
 			}
 		
 			FbxSection* Section = &(*Sections)[MaterialIds[MatIndex]];
+			// 每个多边形有3个顶点（已经三角化）
 			for(int l=0;l<3;++l)
 			{
-				Section->Triangle.push_back(Triangle[3*MatIndex+l]);
-				Section->Colors.push_back(Colors[3*MatIndex+l]);
-				Section->UVs.push_back(UVs[3*MatIndex+l]);
-				Section->Normals.push_back(Normals[3*MatIndex+l]);
-				Section->Tangents.push_back(Tangents[3*MatIndex+l]);
-				Section->Binormals.push_back(Binormals[3*MatIndex+l]);
+				if(vertexIndex < Triangle.size()) {
+					Section->Triangle.push_back(Triangle[vertexIndex]);
+					Section->Colors.push_back(Colors[vertexIndex]);
+					Section->UVs.push_back(UVs[vertexIndex]);
+					Section->Normals.push_back(Normals[vertexIndex]);
+					Section->Tangents.push_back(Tangents[vertexIndex]);
+					Section->Binormals.push_back(Binormals[vertexIndex]);
+					vertexIndex++;
+				}
 			}
 		}
 	}
@@ -263,13 +305,14 @@ void FbxSdkLibrary::GetMeshControlPoint(const FbxMesh* pMesh,vector<FbxVector4>&
 {
 	if(pMesh)
 	{
-		int i, lControlPointsCount = pMesh->GetControlPointsCount();
+		int lControlPointsCount = pMesh->GetControlPointsCount();
 		FbxVector4* lControlPoints = pMesh->GetControlPoints();
 		
-		for (i = 0; i < lControlPointsCount; i++)
-		{
-			ControlPoints.push_back(lControlPoints[i]);
-		}
+		// 预分配内存以提高性能
+		ControlPoints.reserve(lControlPointsCount);
+		
+		// 使用批量插入而不是逐个push_back
+		ControlPoints.insert(ControlPoints.end(), lControlPoints, lControlPoints + lControlPointsCount);
 	}
 }
 
@@ -409,8 +452,7 @@ void FbxSdkLibrary::GetPolygonNormal(FbxMesh* pMesh, int PolygonIndex, FbxVector
 			default:
 				break; // other reference modes not shown here!
 			}
-			*(&Normal + 1) = Normal;
-			*(&Normal + 2) = Normal;
+			// 移除危险的指针运算，这段代码原本试图设置连续的法线值，但实际上是错误的
 		}
 	}
 }
@@ -437,8 +479,7 @@ void FbxSdkLibrary::GetPolygonTangent(FbxMesh* pMesh, int PolygonIndex, FbxVecto
 			default:
 				break; // other reference modes not shown here!
 			}
-			*(&Tangent + 1) = Tangent;
-			*(&Tangent + 2) = Tangent;
+			// 移除危险的指针运算
 		}
 	}
 }
@@ -467,8 +508,7 @@ void FbxSdkLibrary::GetPolygonBinormal(FbxMesh* pMesh, int PolygonIndex, FbxVect
 			default:
 				break; // other reference modes not shown here!
 			}
-			*(&Binormal + 1) = Binormal;
-			*(&Binormal + 2) = Binormal;
+			// 移除危险的指针运算
 		}
 	}
 }
@@ -706,15 +746,15 @@ void FbxSdkLibrary::GetFbxMaterials(FbxScene* pScene, map<uint64_t, FbxMaterials
 
 			//Opacity is Transparency factor now
 			MFbxDouble1 =((FbxSurfacePhong *) Material)->TransparencyFactor;
-			MaterialInfo.Opacity.Factory = 1.0-MFbxDouble1.Get();
+			MaterialInfo.Opacity.Factor = 1.0-MFbxDouble1.Get();
 
 			// Display the Shininess
 			MFbxDouble1 =((FbxSurfacePhong *) Material)->Shininess;
-			MaterialInfo.Opacity.Factory = MFbxDouble1.Get();
+			MaterialInfo.Opacity.Factor = MFbxDouble1.Get();
             	
 			// Display the Reflectivity
 			MFbxDouble1 =((FbxSurfacePhong *) Material)->ReflectionFactor;
-			MaterialInfo.Reflectivity.Factory = MFbxDouble1.Get();
+			MaterialInfo.Reflectivity.Factor = MFbxDouble1.Get();
 		}
 		else if(Material->GetClassId().Is(FbxSurfaceLambert::ClassId) )
 		{
@@ -733,7 +773,7 @@ void FbxSdkLibrary::GetFbxMaterials(FbxScene* pScene, map<uint64_t, FbxMaterials
 
 			// Display the Opacity
 			MFbxDouble1 =((FbxSurfaceLambert *)Material)->TransparencyFactor;
-			MaterialInfo.Opacity.Factory =  1.0-MFbxDouble1.Get();
+			MaterialInfo.Opacity.Factor =  1.0-MFbxDouble1.Get();
 			MaterialInfo.Opacity.Texture = GetMaterialTexture(Material, FbxSurfaceLambert::sTransparencyFactor);
 		}
 		MaterialInfos.insert(pair<uint64_t,FbxMaterialsInfo>(Material->GetUniqueID(),MaterialInfo));
