@@ -10,36 +10,37 @@
 # define DLL_API _declspec(dllimport)
 
 #endif // DLLTEST_EXPORTS
-using namespace std;
+// 避免在头文件中使用 using namespace std;
+// 使用具体的类型声明
 
 
 
 struct FbxMaterialColorProperty
 {
  FbxDouble3 Color;
- const char* Texture;
+ const char* Texture;  // 注意：这里存储的是指向FBX SDK内部字符串的指针，生命周期由SDK管理
 };
 
 struct FbxMaterialFactorProperty
 {
- double Factory;
- const char* Texture;
+ double Factor;  // 材质因子（如透明度、光泽度等）
+ const char* Texture;  // 注意：这里存储的是指向FBX SDK内部字符串的指针
 };
 
 struct FbxSection
 {
- vector<int> Triangle;
- vector<FbxColor> Colors;
- vector<FbxVector2> UVs;
- vector<FbxVector4> Normals;
- vector<FbxVector4> Tangents;
- vector<FbxVector4> Binormals;
+ std::vector<int> Triangle;
+ std::vector<FbxColor> Colors;
+ std::vector<FbxVector2> UVs;
+ std::vector<FbxVector4> Normals;
+ std::vector<FbxVector4> Tangents;
+ std::vector<FbxVector4> Binormals;
 };
 
 struct FbxGeometryInfo
 {
- vector<FbxVector4> ControlPoints;
- map<uint64_t,FbxSection> Sections;
+ std::vector<FbxVector4> ControlPoints;
+ std::map<uint64_t,FbxSection> Sections;
  
 };
 
@@ -62,8 +63,8 @@ struct FbxNodeInfo
  uint64_t Id;
  const char* NodeName;
  uint64_t LinkMeshId = 0;
- vector<uint64_t> LinkMaterialsId;
- vector<map<const char*,const char*>> Metadata;
+ std::vector<uint64_t> LinkMaterialsId;
+ std::vector<std::map<const char*,const char*>> Metadata;
 };
 
 class DLL_API FbxSdkLibrary
@@ -84,16 +85,16 @@ public:
     /**
     * @brief 获得Fbx文件的metadata
     */
-    static void GetMetaData(FbxScene* pScene, map<const char*, const char*>& MetaData);
+    static void GetMetaData(FbxScene* pScene, std::map<const char*, const char*>& MetaData);
     /**
     * @brief 获得Scene里面的所有Geometry
     */
-    static map<uint64_t, FbxGeometryInfo> GetFbxGeometries(FbxScene* pScene);
+    static std::map<uint64_t, FbxGeometryInfo> GetFbxGeometries(FbxScene* pScene);
     
     /**
     * @brief 获得Mesh的控制点
     */
-    static void GetMeshControlPoint(const FbxMesh* pMesh, vector<FbxVector4>& ControlPoints);
+    static void GetMeshControlPoint(const FbxMesh* pMesh, std::vector<FbxVector4>& ControlPoints);
    /**
     * @brief 获得Mesh的顶点颜色信息
     */
@@ -122,7 +123,7 @@ public:
     /**
      *@brief 获得场景材质信息
      */
-    static void GetFbxMaterials(FbxScene* pScene,map<uint64_t,FbxMaterialsInfo>& MaterialInfos);
+    static void GetFbxMaterials(FbxScene* pScene,std::map<uint64_t,FbxMaterialsInfo>& MaterialInfos);
 
     static const char* GetMaterialTexture(FbxSurfaceMaterial* pMaterial,const char* Property);
 
